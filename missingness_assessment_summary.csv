@@ -1,0 +1,4 @@
+"Test","Result","Implication"
+"Predictors of missingness","No significant predictors","MCAR or MNAR"
+"Little's MCAR test","Not MCAR","MAR/MNAR"
+"Outcome-missingness relationship","Not significant","MAR plausible"
