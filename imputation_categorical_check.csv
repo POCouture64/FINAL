@@ -1,0 +1,5 @@
+"variable","n_missing","n_levels","max_prop_diff","flag"
+"employment",1,4,0.026,"✓"
+"driving_freq",39,4,0.084,"✓"
+"income",9,5,0.211,"⚠️ REVIEW"
+"stop_wdl_exp_combined",17,6,0.016,"✓"

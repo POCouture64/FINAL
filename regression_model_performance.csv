@@ -1,0 +1,3 @@
+Model,Description,VSURF_Set,N_Predictors,EPV,EPV_status,AUC
+Model A,Personality VSURF interpretation set,Interpretation (Step 2),5,23,✓ Adequate (≥10),"0.695 [0.633, 0.755]"
+Model B,Full VSURF interpretation set,Interpretation (Step 2),8,14.4,✓ Adequate (≥10),"0.791 [0.739, 0.841]"
