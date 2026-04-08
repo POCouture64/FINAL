@@ -17,6 +17,9 @@ SIMOA <- read_csv("SIMOA Report.csv")
 View(SIMOA)
 ```
 
+
+
+
 ## Eligibility
 
 ```{r}
@@ -138,6 +141,8 @@ cat("═════════════════════════
 cat("✓ Eligibility filtering complete\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 ```
+
+
 ## Personality Missingness
 ```{r}
 #==============================================================================
@@ -621,6 +626,7 @@ cat("═════════════════════════
 cat("MISSINGNESS DIAGNOSTICS COMPLETE\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 ```
+
 
 ## Variable Coalescing, Preparation, Selection
 ```{r}
@@ -5608,7 +5614,6 @@ cat("═════════════════════════
 
 
 
-
 ## Descriptive Stats
 ```{r}
 #==============================================================================
@@ -5651,6 +5656,14 @@ cat("═════════════════════════
 #     - Cramer's V: computed from pooled chi-square statistic
 #
 #   FDR: Benjamini-Hochberg applied to pooled p-values within families
+#
+# SLEEP AID VARIABLES (alc_sleep, can_sleep, melatonin_use, op_sleep):
+#   These are conditional display variables in REDCap — only shown to
+#   participants who indicated using that substance. 0 = never uses.
+#   Treated as ordered factors (0=Never, 1-4=frequency levels).
+#   Run initially with full level breakdown to assess sparsity.
+#   If levels are too sparse, collapse to binary (Never vs Any use)
+#   and switch to Fisher's exact test.
 #
 # REFERENCES:
 #   Rubin, D.B. (1987). Multiple Imputation for Nonresponse in Surveys.
@@ -5736,15 +5749,12 @@ recode_dataset <- function(df) {
     df$sex <- factor(df$sex, levels = c(1, 2), labels = c("Female", "Male"))
 
   # ── Province/Territory ──────────────────────────────────────────────────────
-  # REDCap coding:
-  #   1=AB, 2=BC, 3=MB, 4=NB, 5=NL, 6=ON, 7=NS, 8=QC, 9=SK,
-  #   10=PE, 11=YT, 12=NT, 13=NU  (14=non-Canadian, excluded in Chunk 3)
   if ("prov_terr" %in% names(df)) {
     df$prov_terr <- dplyr::case_when(
-      df$prov_terr %in% c(1, 2, 3, 9)  ~ "Western Canada",
-      df$prov_terr %in% c(6, 8)        ~ "Central Canada",
+      df$prov_terr %in% c(1, 2, 3, 12)  ~ "Western Canada",
+      df$prov_terr %in% c(9, 11)        ~ "Central Canada",
       df$prov_terr %in% c(4, 5, 7, 10) ~ "Atlantic Canada",
-      df$prov_terr %in% c(11, 12, 13)  ~ "Territories",
+      df$prov_terr %in% c(6, 8, 13)  ~ "Territories",
       TRUE                              ~ NA_character_
     )
     df$prov_terr <- factor(df$prov_terr,
@@ -5809,6 +5819,24 @@ recode_dataset <- function(df) {
     df$fall2 <- factor(df$fall2, levels = 0:2,
       labels = c("No fall / not injured", "Minor injury", "Serious injury"))
 
+  # ── Sleep aid frequency variables ───────────────────────────────────────────
+  # Conditional display variables — 0 = does not use this substance.
+  # Treated as ordered factors (0=Never, 1-4=frequency levels).
+  # Run initially with full breakdown to assess sparsity.
+  # If too sparse, collapse to binary (Never vs Any use) in a later pass.
+  sleep_aid_vars   <- c("alc_sleep", "can_sleep", "melatonin_use", "op_sleep")
+  sleep_aid_labels <- c("Never", "<1 day/week", "1-3 days/week",
+                         "4-6 days/week", "7 days/week")
+
+  for (var in sleep_aid_vars) {
+    if (var %in% names(df)) {
+      df[[var]] <- factor(df[[var]],
+                          levels = 0:4,
+                          labels = sleep_aid_labels,
+                          ordered = TRUE)
+    }
+  }
+
   # ── Ensure Likert items are numeric ─────────────────────────────────────────
   likert_vars <- c(
     paste0("benefit_", c(1, 4, 5, 6)),
@@ -5834,6 +5862,30 @@ all_datasets <- lapply(all_imputed, recode_dataset)
 cat(sprintf("✓ Recoded all %d imputed datasets\n\n", m))
 
 d1 <- all_datasets[[1]]
+
+#------------------------------------------------------------------------------
+# SPARSITY DIAGNOSTIC FOR SLEEP AID VARIABLES
+# Print level counts in imputation 1 so you can decide whether to collapse
+#------------------------------------------------------------------------------
+
+cat("SLEEP AID VARIABLE SPARSITY CHECK (imputation 1):\n")
+cat("─────────────────────────────────────────────────────────────\n")
+cat("Review counts below — if any non-Never levels have n < 5 in either\n")
+cat("group, consider collapsing to binary (Never vs Any use).\n\n")
+
+sleep_aid_vars <- c("alc_sleep", "can_sleep", "melatonin_use", "op_sleep")
+
+for (var in sleep_aid_vars) {
+  if (!var %in% names(d1)) next
+  cat(sprintf("%s:\n", var))
+  tab <- table(
+    Level  = d1[[var]],
+    Group  = ifelse(d1$stopped_bzra == 1, "Stopper", "Continuer"),
+    useNA  = "ifany"
+  )
+  print(addmargins(tab))
+  cat("\n")
+}
 
 #------------------------------------------------------------------------------
 # VARIABLE DEFINITIONS
@@ -5877,10 +5929,11 @@ personality <- c(
 all_vars <- c(demographics, clinical, sleep_adverse, beliefs_comob, personality)
 all_vars <- all_vars[all_vars %in% names(d1)]
 
-cat_vars  <- c(
+cat_vars <- c(
   "sex", "education", "income", "employment", "driving_freq",
   "prov_terr", "gen_health", "alc_use",
-  "stop_wdl_exp_combined", "fall2"
+  "stop_wdl_exp_combined", "fall2",
+  "alc_sleep", "can_sleep", "melatonin_use", "op_sleep"
 )
 cat_vars  <- cat_vars[cat_vars %in% names(d1)]
 cont_vars <- all_vars[!all_vars %in% cat_vars]
@@ -5958,8 +6011,8 @@ pool_continuous <- function(var, datasets, outcome = outcome_var) {
   imp_stats <- lapply(datasets, function(df) {
     x   <- as.numeric(df[[var]])
     grp <- as.integer(df[[outcome]])
-    x0  <- x[!is.na(grp) & grp == 0]   # continuers
-    x1  <- x[!is.na(grp) & grp == 1]   # stoppers
+    x0  <- x[!is.na(grp) & grp == 0]
+    x1  <- x[!is.na(grp) & grp == 1]
     n0  <- sum(!is.na(x0))
     n1  <- sum(!is.na(x1))
     if (n0 < 2 || n1 < 2) return(NULL)
@@ -5996,7 +6049,6 @@ pool_continuous <- function(var, datasets, outcome = outcome_var) {
   pool_sd1 <- sqrt(pool_v1)
   n1       <- round(mean(sapply(imp_stats, `[[`, "n1")))
 
-  # Rubin's Rules for mean difference (stoppers - continuers)
   diffs  <- sapply(imp_stats, `[[`, "diff")
   se2s   <- sapply(imp_stats, `[[`, "se_diff")^2
   Q_bar  <- mean(diffs)
@@ -6005,7 +6057,6 @@ pool_continuous <- function(var, datasets, outcome = outcome_var) {
   T_var  <- W + (1 + 1 / mm) * B
   t_stat <- Q_bar / sqrt(T_var)
 
-  # Barnard-Rubin degrees of freedom
   lambda <- (1 + 1 / mm) * B / max(T_var, 1e-12)
   df_old <- (n0 + n1 - 2)
   df_obs <- if (lambda > 0) (1 - lambda) * df_old * (df_old + 1) / (df_old + 3) else df_old
@@ -6013,8 +6064,6 @@ pool_continuous <- function(var, datasets, outcome = outcome_var) {
   df     <- 1 / (1 / df_m + 1 / df_obs)
   p_val  <- 2 * pt(abs(t_stat), df = df, lower.tail = FALSE)
 
-  # Cohen's d with 95% CI
-  # Positive d = higher in stoppers (group 1) than continuers (group 0)
   pool_sp <- mean(sapply(imp_stats, `[[`, "sp"))
   d       <- if (pool_sp > 0) Q_bar / pool_sp else NA_real_
   se_d    <- if (!is.na(d))
@@ -6273,7 +6322,6 @@ for (var in all_vars) {
       stringsAsFactors = FALSE
     )
   } else {
-    # Parent row (variable label + test results, no descriptives)
     table_rows[[length(table_rows) + 1]] <- data.frame(
       Family         = fam,
       Variable       = var,
@@ -6289,7 +6337,6 @@ for (var in all_vars) {
       Interpretation = srow$interpretation,
       stringsAsFactors = FALSE
     )
-    # Sub-rows for each factor level (descriptives only, no test columns)
     for (j in seq_len(nrow(res$levels))) {
       lv <- res$levels[j, ]
       table_rows[[length(table_rows) + 1]] <- data.frame(
@@ -6322,6 +6369,9 @@ cat(sprintf("  Continuers (stopped_bzra=0): n=%d  |  ", n_continuers))
 cat(sprintf("Stoppers (stopped_bzra=1): n=%d\n", n_stoppers))
 cat("  Cohen's d: positive = higher score in stoppers than continuers\n")
 cat("  Cramer's V: always positive; direction from level percentages\n")
+cat("  NOTE: Sleep aid variables (alc_sleep, can_sleep, melatonin_use,\n")
+cat("        op_sleep) shown with full level breakdown. Review sparsity\n")
+cat("        diagnostic above and collapse to binary if needed.\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 print_table <- display_table %>%
@@ -6332,7 +6382,6 @@ print_table <- display_table %>%
 print(print_table, row.names = FALSE, na.print = "")
 cat("\n")
 
-# Save with renamed header columns
 out_table <- print_table
 names(out_table)[names(out_table) == "Overall"]    <- sprintf("Overall (N=%d)", N)
 names(out_table)[names(out_table) == "Continuers"] <- sprintf("Continuers (n=%d)", n_continuers)
@@ -6550,6 +6599,11 @@ cat("positive values indicate higher scores in the stopper group. For categorica
 cat("variables, pooled proportions are reported as n (%); differences were tested\n")
 cat("using mean pooled chi-square statistics (Enders, 2010); effect sizes are\n")
 cat("Cramer's V with direction inferred from level percentages.\n\n")
+cat("Sleep aid frequency variables (alc_sleep, can_sleep, melatonin_use, op_sleep)\n")
+cat("were treated as ordered factors (0=Never, 1=<1 day/week, 2=1-3 days/week,\n")
+cat("3=4-6 days/week, 4=7 days/week). Sparsity was assessed prior to analysis;\n")
+cat("if cell counts were insufficient for chi-square assumptions, variables were\n")
+cat("collapsed to binary (Never vs Any use) and Fisher's exact test applied.\n\n")
 cat("FDR correction (Benjamini & Hochberg, 1995) was applied within five variable\n")
 cat(sprintf("families: demographics (k=%d), clinical (k=%d), sleep/adverse effects (k=%d),\n",
             sum(all_vars %in% demographics), sum(all_vars %in% clinical),
@@ -6591,7 +6645,9 @@ cat("  - BFI subscales: 2-item Spearman-Brown, not true Cronbach's alpha\n")
 cat("  - DBAS_Total: overall dysfunctional beliefs summary\n")
 cat("  - alc_use: combined from sex-specific items (0=Never to 4=Very high)\n")
 cat("  - prov_terr: AB/BC/MB/SK=Western, ON/QC=Central,\n")
-cat("               NB/NL/NS/PE=Atlantic, YT/NT/NU=Territories\n\n")
+cat("               NB/NL/NS/PE=Atlantic, YT/NT/NU=Territories\n")
+cat("  - Sleep aid vars: ordered factor (0=Never to 4=7 days/week)\n")
+cat("    Review sparsity diagnostic output before finalising analysis approach\n\n")
 
 cat("REFERENCES:\n")
 cat("  Rubin, D.B. (1987). Multiple Imputation for Nonresponse in Surveys.\n")
@@ -6600,6 +6656,8 @@ cat("  Enders, C.K. (2010). Applied Missing Data Analysis.\n")
 cat("  Benjamini & Hochberg (1995). JRSS-B, 57(1), 289-300.\n")
 cat("  Cohen, J. (1988). Statistical Power Analysis (2nd ed.).\n\n")
 ```
+
+
 
 
 
