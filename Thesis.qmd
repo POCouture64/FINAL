@@ -11594,6 +11594,815 @@ cat("✓ Ready for Chunk 16\n\n")
 ```
 
 
+## Correlation Matrix
+```{r}
+# ==============================================================================
+# CHUNK 16: COMPLETE CASE MIXED-MEASURE ASSOCIATION MATRIX
+# ==============================================================================
+# Purpose:
+#   Produce a pairwise association matrix on the complete case sample defined
+#   in Chunk 15, using the statistically appropriate measure for each variable-
+#   pair type. Variables are constructed subscales/composites and selected
+#   health/attitudinal single-item variables — NO raw items.
+#
+# Variable set:
+#   1. Model vars      — vars_A + vars_B + outcome (from cc_output)
+#   2. DBAS subscales  — Consequences, Worry_Helplessness, Expectations,
+#                        Medications, Total
+#   3. CISS subscales  — Task, Emotion, Avoidance
+#   4. BFI subscales   — Extraversion, Agreeableness, Conscientiousness,
+#                        Neuroticism, Openness
+#   5. SURPS subscales — Hopelessness, Impulsivity, Sensation_Seeking,
+#                        Anxiety_Sensitivity
+#   6. COM-B composites — capabilityC, side_effectsC, benefitsC, adlsC,
+#                         dependenceC, motivationC
+#   7. Health/attitudinal single items — gen_health, osss_3_score, phq2_score,
+#      c_lengthofuse, bzra_daily_diazepam_eq, n_sleep_conditions,
+#      wdl_symptom_count, stop_wdl_exp_combined, med_quant, phys_health_con,
+#      ment_health_con, mobil_aid, fall, intent
+#
+#   All sourced from raw_data (modified in-place by Chunk 15) filtered to the
+#   same complete-case rows as Chunk 15.
+#
+# Association measures:
+#
+#   Pair type                               Measure        Symbol  Range
+#   ──────────────────────────────────────────────────────────────────────
+#   Continuous/ordinal × continuous/ord     Spearman ρ     ρ       −1 to +1
+#   Binary nominal    × continuous/ord      Rank-biserial  r       −1 to +1
+#   Binary nominal    × binary nominal      Phi            φ       −1 to +1
+#   Multi-cat nominal × continuous/ord      Eta squared    η       0 to +1  *
+#   Multi-cat nominal × nominal (any)       Cramér's V     V       0 to +1  *
+#
+#   * Unsigned: direction cannot be summarised as a single value for
+#     multi-category nominal variables. Group descriptives recommended
+#     as a supplement where direction is of interest.
+#
+# Colour scales:
+#   Signed   (ρ, r, φ) — diverging  red–white–blue  (−1 to +1)
+#   Unsigned (η, V)    — sequential white–purple     (0 to +1)
+#
+# Cell labels: value + symbol  e.g. ".45ρ"  ".08η"  ".31V"
+# Axis labels: model vars highlighted in red; HTML tick labels append ★
+#
+# Requires:
+#   Chunk 15 run in the same session:
+#     cc_data, cc_output, chunk12  in environment
+#     raw_data (modified in-place by Chunk 15 with all subscales)
+#
+# Outputs:
+#   1. cc_correlation_matrix.png            — full matrix, static hi-res
+#   2. cc_correlation_matrix.pdf            — vector version
+#   3. cc_correlation_matrix.html           — interactive, dual colour bars
+#   4. cc_correlation_matrix_model_only.png — model vars only
+#
+# Methodological note (for thesis):
+#   Constructed composites (mean of items) and single-item variables differ in
+#   reliability. Composite–composite correlations are generally less attenuated
+#   by measurement error than composite–single-item or single–single pairs.
+#   This should be acknowledged in a footnote to the correlation table.
+#
+# References:
+#   Cureton EE (1956). Rank-biserial correlation. Psychometrika, 21(3), 287-290.
+#   Cohen J (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.).
+#   Richardson JTE (2011). Eta squared. Practical Assessment, Research & Eval, 16(6).
+# ==============================================================================
+
+# ── Packages ───────────────────────────────────────────────────────────────────
+pkgs <- c("dplyr", "ggplot2", "plotly", "htmlwidgets")
+for (p in pkgs)
+  if (!p %in% rownames(installed.packages())) install.packages(p, quiet = TRUE)
+
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(htmlwidgets)
+
+if (!requireNamespace("ggnewscale", quietly = TRUE))
+  install.packages("ggnewscale", quiet = TRUE)
+has_ggnewscale <- requireNamespace("ggnewscale", quietly = TRUE)
+if (has_ggnewscale) library(ggnewscale)
+
+cat("\n")
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("CHUNK 16: COMPLETE CASE MIXED-MEASURE ASSOCIATION MATRIX\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+# ==============================================================================
+# PART A: CHECK ENVIRONMENT
+# ==============================================================================
+
+cat("PART A: Checking environment\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+for (obj in c("cc_data", "cc_output", "chunk12", "raw_data"))
+  if (!exists(obj))
+    stop(sprintf("ERROR: '%s' not found. Run Chunk 15 first in this session.", obj))
+
+outcome_var <- cc_output$metadata$outcome
+vars_A      <- cc_output$metadata$vars_A
+vars_B      <- cc_output$metadata$vars_B
+model_vars  <- unique(c(outcome_var, vars_A, vars_B))
+
+cat(sprintf("✓ cc_data   : %d rows × %d columns\n", nrow(cc_data), ncol(cc_data)))
+cat(sprintf("✓ raw_data  : %d rows × %d columns\n", nrow(raw_data), ncol(raw_data)))
+cat(sprintf("✓ outcome   : %s\n", outcome_var))
+cat(sprintf("✓ Model A (%d): %s\n", length(vars_A), paste(vars_A, collapse = ", ")))
+cat(sprintf("✓ Model B (%d): %s\n", length(vars_B), paste(vars_B, collapse = ", ")))
+cat(sprintf("✓ Union model vars (inc. outcome): %d\n\n", length(model_vars)))
+
+# ==============================================================================
+# PART B: DEFINE VARIABLE SET — SUBSCALES, COMPOSITES, SINGLE ITEMS
+# ==============================================================================
+
+cat("PART B: Defining variable set (subscales + composites + single items)\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+# ── Constructed subscales (built in Chunk 15 Parts C–D on raw_data) ────────────
+dbas_subscales <- c(
+  "DBAS_Consequences", "DBAS_Worry_Helplessness", "DBAS_Expectations",
+  "DBAS_Medications", "DBAS_Total"
+)
+
+ciss_subscales <- c("CISS_Task", "CISS_Emotion", "CISS_Avoidance")
+
+bfi_subscales <- c(
+  "BFI_Extraversion", "BFI_Agreeableness", "BFI_Conscientiousness",
+  "BFI_Neuroticism", "BFI_Openness"
+)
+
+surps_subscales <- c(
+  "SURPS_Hopelessness", "SURPS_Impulsivity",
+  "SURPS_Sensation_Seeking", "SURPS_Anxiety_Sensitivity"
+)
+
+comb_composites <- c(
+  "capabilityC", "side_effectsC", "benefitsC",
+  "adlsC", "dependenceC", "motivationC"
+)
+
+# ── Health / attitudinal single-item variables ─────────────────────────────────
+# These are meaningful as standalone items and routinely appear in similar
+# clinical studies. Raw Likert items (dbas_3, surps1, etc.) are NOT included.
+health_single <- c(
+  "gen_health",            # self-rated general health
+  "osss_3_score",          # social support (3-item scale score)
+  "phq2_score",            # PHQ-2 depression screen
+  "phys_health_con",       # physical health condition count/flag
+  "ment_health_con",       # mental health condition count/flag
+  "mobil_aid",             # mobility aid use (binary)
+  "fall",                  # fall in past year (binary)
+  "med_quant",             # number of medications
+  "c_lengthofuse",         # length of BZRA use (continuous)
+  "bzra_daily_diazepam_eq",# BZRA dose equivalence (continuous)
+  "n_sleep_conditions",    # number of sleep conditions
+  "wdl_symptom_count",     # withdrawal symptom count
+  "stop_wdl_exp_combined", # prior stopping/withdrawal experience (factor)
+  "intent",                # intent to stop (binary/ordinal)
+  "phq2_score"             # already listed above but harmless duplicate
+)
+health_single <- unique(health_single)
+
+# ── Full variable list for matrix ─────────────────────────────────────────────
+all_matrix_vars <- unique(c(
+  outcome_var,
+  model_vars,           # ensures model vars present even if not in lists below
+  dbas_subscales,
+  ciss_subscales,
+  bfi_subscales,
+  surps_subscales,
+  comb_composites,
+  health_single
+))
+
+cat(sprintf("Target variable count: %d\n\n", length(all_matrix_vars)))
+cat("Variable groups:\n")
+cat(sprintf("  Model vars (inc. outcome): %d\n", length(model_vars)))
+cat(sprintf("  DBAS subscales:            %d\n", length(dbas_subscales)))
+cat(sprintf("  CISS subscales:            %d\n", length(ciss_subscales)))
+cat(sprintf("  BFI subscales:             %d\n", length(bfi_subscales)))
+cat(sprintf("  SURPS subscales:           %d\n", length(surps_subscales)))
+cat(sprintf("  COM-B composites:          %d\n", length(comb_composites)))
+cat(sprintf("  Health/attitudinal items:  %d\n\n", length(health_single)))
+
+# ==============================================================================
+# PART C: BUILD COMPLETE-CASE WORKING DATASET
+# ==============================================================================
+
+cat("PART C: Building complete-case working dataset\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+# Ensure outcome is in raw_data (derived from freq_dich if absent)
+if (!outcome_var %in% names(raw_data)) {
+  if (!"freq_dich" %in% names(raw_data))
+    stop("ERROR: outcome and freq_dich both absent from raw_data. Check Chunk 15.")
+  raw_data[[outcome_var]] <- dplyr::case_when(
+    raw_data$freq_dich %in% c(0, 1) ~ 1L,
+    raw_data$freq_dich == 2          ~ 0L,
+    TRUE                             ~ NA_integer_
+  )
+  cat("  ✓ Derived outcome from freq_dich\n")
+}
+
+# Identify CC rows using the same union-of-model-vars rule as Chunk 15
+cc_union_vars   <- c(outcome_var, unique(c(vars_A, vars_B)))
+cc_check_cols   <- cc_union_vars[cc_union_vars %in% names(raw_data)]
+cc_rows         <- complete.cases(raw_data[, cc_check_cols, drop = FALSE])
+
+cat(sprintf("  ✓ CC rows (Chunk 15 definition): %d / %d\n", sum(cc_rows), nrow(raw_data)))
+
+if (sum(cc_rows) != nrow(cc_data))
+  cat(sprintf("  ⚠ Warning: CC row count (%d) differs from cc_data (%d). Check Chunk 15.\n",
+              sum(cc_rows), nrow(cc_data)))
+
+# Subset raw_data to CC rows
+work_raw <- raw_data[cc_rows, , drop = FALSE]
+
+# Check which target vars are present in work_raw
+present_vars <- all_matrix_vars[all_matrix_vars %in% names(work_raw)]
+absent_vars  <- all_matrix_vars[!all_matrix_vars %in% names(work_raw)]
+
+if (length(absent_vars) > 0) {
+  cat(sprintf("\n  ⚠ Variables absent from raw_data (%d) — will be skipped:\n",
+              length(absent_vars)))
+  for (v in absent_vars) cat(sprintf("      • %s\n", v))
+  cat("\n")
+} else {
+  cat("  ✓ All target variables found in raw_data\n\n")
+}
+
+work_data <- work_raw %>% select(all_of(present_vars))
+
+cat(sprintf("  ✓ Working dataset: %d rows × %d columns\n\n",
+            nrow(work_data), ncol(work_data)))
+
+# ==============================================================================
+# PART D: CLASSIFY VARIABLE TYPES
+# ==============================================================================
+
+cat("PART D: Classifying variable types\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+classify_var <- function(x) {
+  if (is.character(x))                   return("multi_nominal")
+  if (is.factor(x) && !is.ordered(x)) {
+    if (length(levels(x)) == 2)          return("binary_nominal")
+    return("multi_nominal")
+  }
+  # Numeric/integer/ordered: check if effectively binary 0/1
+  vals <- sort(unique(na.omit(as.numeric(x))))
+  if (length(vals) == 2 && all(vals == c(0, 1))) return("binary_nominal")
+  return("continuous")
+}
+
+var_types <- sapply(work_data, classify_var)
+n_cont    <- sum(var_types == "continuous")
+n_binom   <- sum(var_types == "binary_nominal")
+n_multi   <- sum(var_types == "multi_nominal")
+
+cat(sprintf("  Continuous / ordinal:     %d\n", n_cont))
+cat(sprintf("  Binary nominal:           %d\n", n_binom))
+cat(sprintf("  Multi-category nominal:   %d\n\n", n_multi))
+
+if (n_multi > 0) {
+  cat("  Multi-category nominal variables (η or V will be used):\n")
+  for (v in names(var_types)[var_types == "multi_nominal"]) {
+    ncat <- length(unique(na.omit(work_data[[v]])))
+    cat(sprintf("    • %-35s [%d categories]\n", v, ncat))
+  }
+  cat("\n")
+}
+
+cat("  Variable type by name:\n")
+for (v in names(var_types))
+  cat(sprintf("    %-35s %s\n", v, var_types[v]))
+cat("\n")
+
+# ==============================================================================
+# PART E: ASSOCIATION FUNCTIONS
+# ==============================================================================
+
+cat("PART E: Defining association functions\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+# Returns list(value, symbol, signed)
+
+# ── Spearman ρ ─────────────────────────────────────────────────────────────────
+assoc_spearman <- function(x, y) {
+  cc <- complete.cases(x, y)
+  if (sum(cc) < 5) return(list(value = NA_real_, symbol = "ρ", signed = TRUE))
+  list(value  = cor(as.numeric(x[cc]), as.numeric(y[cc]), method = "spearman"),
+       symbol = "ρ", signed = TRUE)
+}
+
+# ── Rank-biserial r  (binary × continuous) ────────────────────────────────────
+# Direction: positive when group coded 1 ranks higher than group coded 0.
+# Formula:   r = 1 − (2W) / (n0 * n1)  where W is the Wilcoxon statistic
+#            for group1 vs group0 (one-sided direction: group1 higher).
+assoc_rankbiserial <- function(bin_var, cont_var) {
+  cc   <- complete.cases(bin_var, cont_var)
+  b    <- as.integer(bin_var[cc])
+  y    <- as.numeric(cont_var[cc])
+  grp0 <- y[b == 0]; grp1 <- y[b == 1]
+  n0   <- length(grp0); n1 <- length(grp1)
+  if (n0 < 3 || n1 < 3)
+    return(list(value = NA_real_, symbol = "r", signed = TRUE))
+  W <- wilcox.test(grp1, grp0, exact = FALSE)$statistic
+  r <- 1 - (2 * W) / (n0 * n1)
+  list(value = as.numeric(r), symbol = "r", signed = TRUE)
+}
+
+# ── Phi φ  (binary × binary) ──────────────────────────────────────────────────
+# Phi = Pearson r on two 0/1 variables. Signed: positive = co-occurrence of
+# 1s exceeds chance.
+assoc_phi <- function(x, y) {
+  cc <- complete.cases(x, y)
+  xi <- as.integer(x[cc]); yi <- as.integer(y[cc])
+  if (length(xi) < 5) return(list(value = NA_real_, symbol = "φ", signed = TRUE))
+  list(value  = cor(xi, yi, method = "pearson"),
+       symbol = "φ", signed = TRUE)
+}
+
+# ── Eta squared η  (multi-cat nominal × continuous) ───────────────────────────
+# Kruskal-Wallis based η²: (H − k + 1) / (n − k)
+# Unsigned: strength only, no direction. Direction requires group descriptives.
+assoc_eta2 <- function(nom_var, cont_var) {
+  cc  <- complete.cases(nom_var, cont_var)
+  grp <- factor(nom_var[cc])
+  y   <- as.numeric(cont_var[cc])
+  k   <- length(levels(grp))
+  n   <- length(y)
+  if (k < 2 || n < 5)
+    return(list(value = NA_real_, symbol = "η", signed = FALSE))
+  H    <- kruskal.test(y ~ grp)$statistic
+  eta2 <- max(0, (as.numeric(H) - k + 1) / (n - k))
+  list(value = eta2, symbol = "η", signed = FALSE)
+}
+
+# ── Cramér's V  (nominal × nominal) ──────────────────────────────────────────
+# V = sqrt(χ² / (n × (min(r,c) − 1))). Unsigned, 0 to 1.
+assoc_cramerv <- function(x, y) {
+  cc <- complete.cases(x, y)
+  xi <- factor(x[cc]); yi <- factor(y[cc])
+  if (length(levels(xi)) < 2 || length(levels(yi)) < 2 || sum(cc) < 5)
+    return(list(value = NA_real_, symbol = "V", signed = FALSE))
+  tbl  <- table(xi, yi)
+  chi2 <- suppressWarnings(chisq.test(tbl, correct = FALSE)$statistic)
+  n    <- sum(tbl)
+  k    <- min(nrow(tbl), ncol(tbl))
+  V    <- sqrt(as.numeric(chi2) / (n * (k - 1)))
+  list(value = min(V, 1), symbol = "V", signed = FALSE)  # cap at 1 for safety
+}
+
+# ── Dispatcher ────────────────────────────────────────────────────────────────
+pair_assoc <- function(v1, v2, data, types) {
+  t1 <- types[v1]; t2 <- types[v2]
+  x  <- data[[v1]]; y  <- data[[v2]]
+
+  # Continuous × continuous
+  if (t1 == "continuous"     && t2 == "continuous")      return(assoc_spearman(x, y))
+  # Binary × continuous (either order)
+  if (t1 == "binary_nominal" && t2 == "continuous")      return(assoc_rankbiserial(x, y))
+  if (t1 == "continuous"     && t2 == "binary_nominal")  return(assoc_rankbiserial(y, x))
+  # Binary × binary
+  if (t1 == "binary_nominal" && t2 == "binary_nominal")  return(assoc_phi(x, y))
+  # Multi-cat × continuous (either order)
+  if (t1 == "multi_nominal"  && t2 == "continuous")      return(assoc_eta2(x, y))
+  if (t1 == "continuous"     && t2 == "multi_nominal")   return(assoc_eta2(y, x))
+  # Multi-cat × binary (either order) → Cramér's V
+  if (t1 == "multi_nominal"  && t2 == "binary_nominal")  return(assoc_cramerv(x, y))
+  if (t1 == "binary_nominal" && t2 == "multi_nominal")   return(assoc_cramerv(y, x))
+  # Multi-cat × multi-cat
+  if (t1 == "multi_nominal"  && t2 == "multi_nominal")   return(assoc_cramerv(x, y))
+  # Fallback
+  list(value = NA_real_, symbol = "?", signed = TRUE)
+}
+
+cat("✓ Association functions defined\n\n")
+
+# ==============================================================================
+# PART F: COMPUTE ASSOCIATION MATRICES
+# ==============================================================================
+
+cat("PART F: Computing pairwise association matrices\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+vnames <- names(work_data)
+nv     <- length(vnames)
+
+val_mat <- matrix(NA_real_,      nv, nv, dimnames = list(vnames, vnames))
+sym_mat <- matrix(NA_character_, nv, nv, dimnames = list(vnames, vnames))
+sgn_mat <- matrix(TRUE,          nv, nv, dimnames = list(vnames, vnames))
+
+diag(val_mat) <- 1
+diag(sym_mat) <- "ρ"
+
+cat(sprintf("Variables in matrix: %d\n", nv))
+cat(sprintf("Pairs to compute:    %d\n\n", nv * (nv - 1) / 2))
+
+pb_step <- max(1, floor(nv / 10))
+for (i in seq_len(nv)) {
+  if (i %% pb_step == 0)
+    cat(sprintf("  ... %d / %d rows processed\n", i, nv))
+  for (j in seq_len(i - 1)) {
+    res <- pair_assoc(vnames[i], vnames[j], work_data, var_types)
+    val_mat[i, j] <- res$value;  val_mat[j, i] <- res$value
+    sym_mat[i, j] <- res$symbol; sym_mat[j, i] <- res$symbol
+    sgn_mat[i, j] <- res$signed; sgn_mat[j, i] <- res$signed
+  }
+}
+
+cat("\n✓ Association matrix complete\n\n")
+
+method_counts <- table(sym_mat[lower.tri(sym_mat)])
+cat("Methods used (lower triangle):\n")
+for (nm in names(method_counts))
+  cat(sprintf("  %-3s  %d pairs\n", nm, method_counts[nm]))
+cat("\n")
+
+# ── Cell label matrix: ".45ρ" style ───────────────────────────────────────────
+label_mat <- matrix("", nv, nv, dimnames = list(vnames, vnames))
+for (i in seq_len(nv)) {
+  for (j in seq_len(i - 1)) {
+    v <- val_mat[i, j]; s <- sym_mat[i, j]
+    if (!is.na(v)) label_mat[i, j] <- paste0(sprintf("%.2f", v), s)
+  }
+}
+diag(label_mat) <- "1"
+
+# ==============================================================================
+# PART G: BUILD LONG-FORMAT PLOT DATA
+# ==============================================================================
+
+cat("PART G: Building plot data\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+model_vars_in_mat <- model_vars[model_vars %in% vnames]
+is_model_var      <- vnames %in% model_vars_in_mat
+label_colours     <- setNames(ifelse(is_model_var, "#C0392B", "grey20"), vnames)
+
+cat(sprintf("Model vars in matrix: %d / %d\n\n",
+            sum(is_model_var), length(model_vars)))
+
+# Long format for ggplot (lower triangle + diagonal only)
+build_plot_df <- function(v_mat, sym_mat, sgn_mat, lbl_mat, var_names) {
+  nv <- length(var_names)
+  out <- expand.grid(j = seq_len(nv), i = seq_len(nv),
+                     KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+  out <- out[out$i >= out$j, ]   # lower triangle + diagonal
+  out$x      <- factor(var_names[out$j], levels = var_names)
+  out$y      <- factor(var_names[out$i], levels = rev(var_names))
+  out$value  <- v_mat[cbind(out$i, out$j)]
+  out$symbol <- sym_mat[cbind(out$i, out$j)]
+  out$signed <- sgn_mat[cbind(out$i, out$j)]
+  out$label  <- lbl_mat[cbind(out$i, out$j)]
+  out
+}
+
+plot_df          <- build_plot_df(val_mat, sym_mat, sgn_mat, label_mat, vnames)
+plot_df_signed   <- plot_df %>% filter(signed  | (as.integer(x) == as.integer(y)))
+plot_df_unsigned <- plot_df %>% filter(!signed & (as.integer(x) != as.integer(y)))
+
+# ==============================================================================
+# PART H: STATIC PLOTS
+# ==============================================================================
+
+cat("PART H: Generating static plots\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+n_vars   <- nv
+lab_size <- ifelse(n_vars > 60, 1.0, ifelse(n_vars > 30, 1.5, 2.2))
+tl_size  <- ifelse(n_vars > 60, 4.0, ifelse(n_vars > 30, 5.5, 7.5))
+canvas   <- ifelse(n_vars > 60, 34,  ifelse(n_vars > 30, 26,  18))
+
+# Axis label colours — must align with factor levels
+x_colours <- label_colours[levels(plot_df$x)]
+y_colours  <- rev(label_colours[levels(plot_df$y)])
+
+make_assoc_plot <- function(df_signed, df_unsigned, has_ggnewscale,
+                            title_str, subtitle_str,
+                            lab_size, tl_size, x_colours, y_colours) {
+  p <- ggplot() +
+    # Signed tiles: diverging red–white–blue
+    geom_tile(data = df_signed,
+              aes(x = x, y = y, fill = value),
+              colour = "white", linewidth = 0.25) +
+    scale_fill_gradient2(
+      name     = "Signed\n(ρ / r / φ)",
+      low      = "#B2182B", mid = "white", high = "#2166AC",
+      midpoint = 0, limits = c(-1, 1), na.value = "grey93",
+      guide    = guide_colorbar(order = 1,
+                                barheight = unit(5, "cm"),
+                                barwidth  = unit(0.4, "cm"))
+    )
+
+  if (has_ggnewscale) {
+    p <- p +
+      ggnewscale::new_scale_fill() +
+      # Unsigned tiles: sequential white–purple
+      geom_tile(data = df_unsigned,
+                aes(x = x, y = y, fill = value),
+                colour = "white", linewidth = 0.25) +
+      scale_fill_gradient(
+        name   = "Unsigned\n(η / V)",
+        low    = "white", high = "#762A83",
+        limits = c(0, 1), na.value = "grey93",
+        guide  = guide_colorbar(order = 2,
+                                barheight = unit(5, "cm"),
+                                barwidth  = unit(0.4, "cm"))
+      )
+  } else {
+    # Fallback without ggnewscale: shade unsigned cells grey
+    p <- p +
+      geom_tile(data = df_unsigned,
+                aes(x = x, y = y),
+                fill = "grey78", colour = "white", linewidth = 0.25)
+    subtitle_str <- paste0(subtitle_str,
+                           "\n[Install ggnewscale for purple unsigned scale]")
+  }
+
+  p +
+    geom_text(data = df_signed   %>% filter(label != ""),
+              aes(x = x, y = y, label = label),
+              size = lab_size, colour = "grey10") +
+    geom_text(data = df_unsigned %>% filter(label != ""),
+              aes(x = x, y = y, label = label),
+              size = lab_size, colour = "grey10") +
+    scale_x_discrete(position = "bottom") +
+    labs(title = title_str, subtitle = subtitle_str, x = NULL, y = NULL) +
+    theme_minimal(base_size = 9) +
+    theme(
+      plot.title        = element_text(size = 11, face = "bold"),
+      plot.subtitle     = element_text(size = 7.5, colour = "grey40"),
+      axis.text.x       = element_text(angle = 45, hjust = 1,
+                                       size = tl_size, colour = x_colours),
+      axis.text.y       = element_text(size = tl_size, colour = y_colours),
+      panel.grid        = element_blank(),
+      legend.position   = "right",
+      legend.title      = element_text(size = 8),
+      legend.text       = element_text(size = 7),
+      plot.margin       = margin(10, 10, 10, 10)
+    )
+}
+
+# ── H1. Full matrix ────────────────────────────────────────────────────────────
+p_full <- make_assoc_plot(
+  df_signed      = plot_df_signed,
+  df_unsigned    = plot_df_unsigned,
+  has_ggnewscale = has_ggnewscale,
+  title_str      = "Mixed-Measure Association Matrix — SIMOA (Complete Cases)",
+  subtitle_str   = sprintf(
+    "ρ=Spearman | r=rank-biserial | φ=phi | η=eta² | V=Cramér's V  |  CC n=%d  |  red labels=model vars",
+    nrow(cc_data)
+  ),
+  lab_size    = lab_size,
+  tl_size     = tl_size,
+  x_colours   = x_colours,
+  y_colours   = y_colours
+)
+
+ggsave("cc_correlation_matrix.png", plot = p_full,
+       width = canvas, height = canvas * 0.95, dpi = 300, bg = "white")
+ggsave("cc_correlation_matrix.pdf", plot = p_full,
+       width = canvas, height = canvas * 0.95)
+cat("✓ Saved: cc_correlation_matrix.png\n")
+cat("✓ Saved: cc_correlation_matrix.pdf\n\n")
+
+# ── H2. Model vars only ────────────────────────────────────────────────────────
+mv_names  <- vnames[is_model_var]
+mv_idx    <- which(is_model_var)
+
+val_m  <- val_mat[mv_idx, mv_idx]
+sym_m  <- sym_mat[mv_idx, mv_idx]
+sgn_m  <- sgn_mat[mv_idx, mv_idx]
+lbl_m  <- label_mat[mv_idx, mv_idx]
+
+df_m         <- build_plot_df(val_m, sym_m, sgn_m, lbl_m, mv_names)
+df_m_signed  <- df_m %>% filter(signed  | (as.integer(x) == as.integer(y)))
+df_m_unsign  <- df_m %>% filter(!signed & (as.integer(x) != as.integer(y)))
+
+n_m   <- length(mv_names)
+ls_m  <- ifelse(n_m > 15, 2.2, 3.0)
+tc_m  <- ifelse(n_m > 15, 7,   9)
+cv_m  <- ifelse(n_m > 15, 16,  12)
+
+xc_m  <- label_colours[mv_names]
+yc_m  <- rev(label_colours[mv_names])
+
+p_model <- make_assoc_plot(
+  df_signed      = df_m_signed,
+  df_unsigned    = df_m_unsign,
+  has_ggnewscale = has_ggnewscale,
+  title_str      = "Model Predictor Association Matrix — SIMOA (Complete Cases)",
+  subtitle_str   = sprintf(
+    "ρ=Spearman | r=rank-biserial | φ=phi | η=eta² | V=Cramér's V  |  CC n=%d",
+    nrow(cc_data)
+  ),
+  lab_size    = ls_m,
+  tl_size     = tc_m,
+  x_colours   = xc_m,
+  y_colours   = yc_m
+)
+
+ggsave("cc_correlation_matrix_model_only.png", plot = p_model,
+       width = cv_m, height = cv_m * 0.95, dpi = 300, bg = "white")
+cat("✓ Saved: cc_correlation_matrix_model_only.png\n\n")
+
+# ==============================================================================
+# PART I: INTERACTIVE HTML
+# ==============================================================================
+
+cat("PART I: Generating interactive HTML\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+# Lower-triangle matrices: separate signed vs unsigned
+val_lower <- val_mat; val_lower[upper.tri(val_lower)] <- NA
+
+signed_lower   <- val_lower
+unsigned_lower <- val_lower
+
+for (i in seq_len(nv)) {
+  for (j in seq_len(i - 1)) {
+    if (!sgn_mat[i, j]) signed_lower[i, j]   <- NA
+    if ( sgn_mat[i, j]) unsigned_lower[i, j] <- NA
+  }
+}
+unsigned_lower[cbind(seq_len(nv), seq_len(nv))] <- NA  # diagonal → signed only
+
+# Tick labels: append ★ for model vars
+tick_labels <- ifelse(vnames %in% model_vars_in_mat,
+                      paste0(vnames, " ★"), vnames)
+
+method_desc <- c(
+  "ρ" = "Spearman ρ: rank correlation (signed, −1 to +1)",
+  "r" = "Rank-biserial r: binary vs continuous (signed, −1 to +1; +ve = group 1 ranks higher)",
+  "φ" = "Phi φ: binary vs binary (signed, −1 to +1; +ve = co-occurrence of 1s > chance)",
+  "η" = "Eta² η: nominal vs continuous (unsigned, 0–1; direction needs group descriptives)",
+  "V" = "Cramér's V: nominal vs nominal (unsigned, 0–1)"
+)
+
+hover_text <- outer(
+  seq_along(vnames), seq_along(vnames),
+  FUN = Vectorize(function(i, j) {
+    if (j > i) return("")
+    v   <- val_mat[i, j]
+    s   <- if (!is.na(sym_mat[i, j])) sym_mat[i, j] else "?"
+    ti  <- if (vnames[i] %in% model_vars_in_mat) " ★" else ""
+    tj  <- if (vnames[j] %in% model_vars_in_mat) " ★" else ""
+    vstr <- if (is.na(v)) "NA" else sprintf("%.3f", v)
+    desc <- if (s %in% names(method_desc)) method_desc[s] else ""
+    sprintf("<b>%s%s</b> × <b>%s%s</b><br>%s = %s<br><i>%s</i><br><i>CC n = %d</i>",
+            vnames[i], ti, vnames[j], tj, s, vstr, desc, nrow(cc_data))
+  })
+)
+
+p_html <- plot_ly() %>%
+  add_trace(
+    type       = "heatmap",
+    z          = signed_lower,
+    x          = tick_labels, y = tick_labels,
+    colorscale = list(c(0,"#B2182B"), c(0.5,"#FFFFFF"), c(1,"#2166AC")),
+    zmin = -1, zmax = 1,
+    text = hover_text, hoverinfo = "text",
+    showscale = TRUE,
+    colorbar  = list(
+      title    = "ρ / r / φ",
+      len = 0.42, y = 0.76,
+      tickvals = c(-1,-0.5,0,0.5,1),
+      ticktext = c("-1.0","-0.5","0","+0.5","+1.0"),
+      titlefont = list(size = 11), tickfont = list(size = 10)
+    ),
+    name = "Signed (ρ / r / φ)"
+  ) %>%
+  add_trace(
+    type       = "heatmap",
+    z          = unsigned_lower,
+    x          = tick_labels, y = tick_labels,
+    colorscale = list(c(0,"#FFFFFF"), c(1,"#762A83")),
+    zmin = 0, zmax = 1,
+    text = hover_text, hoverinfo = "text",
+    showscale = TRUE,
+    colorbar  = list(
+      title    = "η / V",
+      len = 0.42, y = 0.26,
+      tickvals = c(0,0.25,0.5,0.75,1),
+      ticktext = c("0",".25",".50",".75","1.0"),
+      titlefont = list(size = 11), tickfont = list(size = 10)
+    ),
+    name = "Unsigned (η / V)"
+  ) %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Mixed-Measure Association Matrix — SIMOA (Complete Cases)<br>",
+        sprintf(
+          "<sup>ρ=Spearman | r=rank-biserial | φ=phi | η=eta² | V=Cramér's V | CC n=%d | ★=model var | hover for detail</sup>",
+          nrow(cc_data)
+        )
+      ),
+      font = list(size = 14)
+    ),
+    xaxis  = list(tickfont = list(size = 7), tickangle = -55, automargin = TRUE),
+    yaxis  = list(tickfont = list(size = 7), automargin = TRUE, autorange = "reversed"),
+    margin = list(l = 170, b = 170, t = 110, r = 130),
+    width  = 1450, height = 1350
+  )
+
+saveWidget(p_html, file = "cc_correlation_matrix.html", selfcontained = TRUE)
+cat("✓ Saved: cc_correlation_matrix.html\n\n")
+
+# ==============================================================================
+# PART J: SAVE ASSOCIATION MATRICES AS CSV
+# ==============================================================================
+
+cat("PART J: Saving association matrices as CSV\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+# Value matrix (lower triangle only — upper set to NA for clarity)
+val_export           <- val_mat
+val_export[upper.tri(val_export)] <- NA
+write.csv(
+  as.data.frame(val_export),
+  "cc_association_matrix_values.csv",
+  na = ""
+)
+
+# Symbol matrix (lower triangle only)
+sym_export           <- sym_mat
+sym_export[upper.tri(sym_export)] <- NA
+write.csv(
+  as.data.frame(sym_export),
+  "cc_association_matrix_symbols.csv",
+  na = ""
+)
+
+cat("✓ Saved: cc_association_matrix_values.csv\n")
+cat("✓ Saved: cc_association_matrix_symbols.csv\n\n")
+
+# ==============================================================================
+# SUMMARY
+# ==============================================================================
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("CHUNK 16 COMPLETE\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat(sprintf("Complete case n:           %d\n",   nrow(cc_data)))
+cat(sprintf("Matrix dimensions:         %d × %d\n", nv, nv))
+cat(sprintf("Model vars highlighted:    %d\n\n", sum(is_model_var)))
+
+cat("Variable types:\n")
+cat(sprintf("  Continuous/ordinal:      %d\n", n_cont))
+cat(sprintf("  Binary nominal:          %d\n", n_binom))
+cat(sprintf("  Multi-category nominal:  %d\n\n", n_multi))
+
+cat("Methods used (lower triangle):\n")
+for (nm in names(method_counts))
+  cat(sprintf("  %-3s  %d pairs\n", nm, method_counts[nm]))
+cat("\n")
+
+cat("FILES CREATED:\n")
+cat("  1. cc_correlation_matrix.png             — full matrix, static\n")
+cat("  2. cc_correlation_matrix.pdf             — vector version\n")
+cat("  3. cc_correlation_matrix.html            — interactive, dual colour bars\n")
+cat("  4. cc_correlation_matrix_model_only.png  — model vars only\n")
+cat("  5. cc_association_matrix_values.csv      — numeric values (lower triangle)\n")
+cat("  6. cc_association_matrix_symbols.csv     — method symbols (lower triangle)\n\n")
+
+cat("COLOUR SCALE KEY:\n")
+cat("  Red–White–Blue (diverging):   ρ, r, φ  — signed, −1 to +1\n")
+cat("  White–Purple   (sequential):  η, V     — unsigned, 0 to +1\n\n")
+
+cat("SYMBOL KEY:\n")
+cat("  ρ  Spearman rank correlation\n")
+cat("     Continuous/ordinal × continuous/ordinal\n\n")
+cat("  r  Rank-biserial correlation  (SIGNED — direction preserved)\n")
+cat("     Binary × continuous/ordinal\n")
+cat("     Positive = group coded 1 tends to rank higher\n\n")
+cat("  φ  Phi coefficient            (SIGNED — direction preserved)\n")
+cat("     Binary × binary\n")
+cat("     Positive = co-occurrence of 1s exceeds chance\n\n")
+cat("  η  Eta squared (KW-based)     (UNSIGNED)\n")
+cat("     Multi-category nominal × continuous/ordinal\n")
+cat("     Ranges 0–1; use group descriptives to recover direction\n\n")
+cat("  V  Cramér's V                 (UNSIGNED)\n")
+cat("     Nominal × nominal\n")
+cat("     Ranges 0–1; use contingency tables to recover direction\n\n")
+
+cat("METHODOLOGICAL NOTE FOR THESIS:\n")
+cat("  The matrix mixes constructed subscales/composites and single-item\n")
+cat("  variables. Composite reliability is generally higher than single-item\n")
+cat("  reliability, which attenuates composite–single-item correlations\n")
+cat("  relative to composite–composite pairs. Acknowledge in table footnote.\n\n")
+
+cat("REFERENCES:\n")
+cat("  Cureton EE (1956). Rank-biserial correlation. Psychometrika, 21, 287-290.\n")
+cat("  Cohen J (1988). Statistical Power Analysis (2nd ed.). Erlbaum.\n")
+cat("  Richardson JTE (2011). Eta squared. Practical Assessment, 16(6).\n\n")
+
+cat("✓ Ready for Chunk 17\n\n")
+```
+
 
 
 
