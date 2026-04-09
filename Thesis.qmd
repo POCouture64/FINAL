@@ -6761,10 +6761,10 @@ recode_dataset <- function(df) {
   # ── Province/Territory ──────────────────────────────────────────────────────
   if ("prov_terr" %in% names(df)) {
     df$prov_terr <- dplyr::case_when(
-      df$prov_terr %in% c(1, 2, 3, 9)  ~ "Western Canada",
-      df$prov_terr %in% c(6, 8)        ~ "Central Canada",
+      df$prov_terr %in% c(1, 2, 3, 12)  ~ "Western Canada",
+      df$prov_terr %in% c(9, 11)        ~ "Central Canada",
       df$prov_terr %in% c(4, 5, 7, 10) ~ "Atlantic Canada",
-      df$prov_terr %in% c(11, 12, 13)  ~ "Territories",
+      df$prov_terr %in% c(6, 8, 13)  ~ "Territories",
       TRUE                              ~ NA_character_
     )
     df$prov_terr <- factor(df$prov_terr,
@@ -7507,10 +7507,10 @@ recode_dataset <- function(df) {
   # ── Province/Territory ──────────────────────────────────────────────────────
   if ("prov_terr" %in% names(df)) {
     df$prov_terr <- dplyr::case_when(
-      df$prov_terr %in% c(1, 2, 3, 9)  ~ "Western Canada",
-      df$prov_terr %in% c(6, 8)        ~ "Central Canada",
+      df$prov_terr %in% c(1, 2, 3, 12)  ~ "Western Canada",
+      df$prov_terr %in% c(9, 11)        ~ "Central Canada",
       df$prov_terr %in% c(4, 5, 7, 10) ~ "Atlantic Canada",
-      df$prov_terr %in% c(11, 12, 13)  ~ "Territories",
+      df$prov_terr %in% c(6, 8, 13)  ~ "Territories",
       TRUE                              ~ NA_character_
     )
     df$prov_terr <- factor(df$prov_terr,
