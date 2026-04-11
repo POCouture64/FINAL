@@ -2016,7 +2016,11 @@ cat(sprintf("  • Final dataset: %d obs × %d vars → SIMOA_analysis.rds\n\n",
 #         motivation, capability, desires, inf_hcp) → PMM
 #       - fall2 → ordered (polr)
 #       - wdl_symptom_count → continuous (PMM)
-#       - stop_wdl_exp_combined → ordered (polr)
+#       - stop_wdl_exp_combined → unordered factor, imputed with polr
+#             (nominal categories, not ordered severity levels;
+#              stored as unordered so downstream models use dummy coding,
+#              not polynomial contrasts — fixes MI vs CC coefficient
+#              label mismatch)
 #   • adverse_effects list replaced with explicit item vectors
 #   • mincor = 0.07 to achieve 20-25 predictors per model
 #   • pilot_imp initialised before tryCatch to prevent scoping error
@@ -2438,11 +2442,21 @@ ordered_vars <- c(
   "education", "income", "employment", "driving_freq",
   "gen_health",
   "fall2",
-  "stop_wdl_exp_combined",
+  # stop_wdl_exp_combined intentionally excluded — see polr_unordered_vars below
   "alc_use",          # 0=Never, 1=Low, 2=Moderate, 3=High, 4=Very high
   if (!is.null(analysis_vars$sleep_aids)) analysis_vars$sleep_aids
   else character()
 )
+
+# ── Nominal categories imputed with polr ──────────────────────────────────────
+# stop_wdl_exp_combined represents distinct nominal categories (not an ordered
+# severity scale). It must be stored as an UNORDERED factor so that downstream
+# regression models (MI and CC) both use dummy coding (levels 1,2,3,4,5)
+# rather than polynomial contrasts (.L,.Q,.C,^4,^5). Storing it as ordered
+# inside the mids object was the root cause of the MI vs CC coefficient name
+# mismatch. mice polr() accepts unordered factors, so imputation is unaffected.
+polr_unordered_vars <- c("stop_wdl_exp_combined")
+polr_unordered_vars <- polr_unordered_vars[polr_unordered_vars %in% names(df_imp)]
 
 # ── Unordered categorical (polyreg) ───────────────────────────────────────────
 unordered_categorical <- c("prov_terr")
@@ -2456,7 +2470,7 @@ unordered_categorical <- unordered_categorical[
 
 # Check for unassigned variables
 all_assigned <- c(continuous_vars, binary_vars,
-                  ordered_vars, unordered_categorical)
+                  ordered_vars, polr_unordered_vars, unordered_categorical)
 unassigned   <- setdiff(names(df_imp), c(all_assigned, derived_vars))
 if (length(unassigned) > 0) {
   cat("⚠️  UNASSIGNED VARIABLES (defaulting to mice auto-detect):\n")
@@ -2479,12 +2493,15 @@ cat(sprintf("  Binary / logreg:                     %d variables\n",
 cat(sprintf("  Ordered categorical / polr:          %d variables\n",
             length(ordered_vars)))
 cat(sprintf("    Includes: fall2 (0=none,1=minor,2=serious)\n"))
-cat(sprintf("    Includes: stop_wdl_exp_combined (0-5 withdrawal severity)\n"))
+cat(sprintf("  Nominal / polr (unordered storage):  %d variables\n",
+            length(polr_unordered_vars)))
+cat(sprintf("    Includes: stop_wdl_exp_combined (nominal, dummy coding)\n"))
 cat(sprintf("  Unordered categorical / polyreg:     %d variables\n",
             length(unordered_categorical)))
 cat(sprintf("  Total assigned:                      %d\n\n",
             length(continuous_vars) + length(binary_vars) +
-              length(ordered_vars) + length(unordered_categorical)))
+              length(ordered_vars) + length(polr_unordered_vars) +
+              length(unordered_categorical)))
 
 # ── Force all Likert and personality items to numeric ─────────────────────────
 cat("FORCING LIKERT AND PERSONALITY ITEMS TO NUMERIC:\n")
@@ -2533,14 +2550,34 @@ for (var in binary_vars)
   if (var %in% names(df_imp))
     df_imp[[var]] <- as.numeric(df_imp[[var]])
 
+# Ordered factors — polynomial contrasts in downstream models
 for (var in ordered_vars)
   if (var %in% names(df_imp) && !is.ordered(df_imp[[var]]))
     df_imp[[var]] <- factor(df_imp[[var]], ordered = TRUE)
+
+# Nominal categories imputed with polr — stored as UNORDERED factor
+# so downstream models produce dummy-coded coefficients (1,2,3,4,5)
+# rather than polynomial contrasts (.L,.Q,.C,^4,^5).
+# This is the fix for the MI vs CC coefficient label mismatch.
+for (var in polr_unordered_vars)
+  if (var %in% names(df_imp))
+    df_imp[[var]] <- factor(df_imp[[var]], ordered = FALSE)
 
 for (var in unordered_categorical)
   if (var %in% names(df_imp) &&
       (!is.factor(df_imp[[var]]) || is.ordered(df_imp[[var]])))
     df_imp[[var]] <- factor(df_imp[[var]], ordered = FALSE)
+
+# Verify stop_wdl_exp_combined is correctly set as unordered
+if ("stop_wdl_exp_combined" %in% names(df_imp)) {
+  swdl_class <- class(df_imp[["stop_wdl_exp_combined"]])
+  if ("ordered" %in% swdl_class) {
+    warning("stop_wdl_exp_combined is still ordered after conversion — check upstream coding")
+  } else {
+    cat("  ✓ stop_wdl_exp_combined confirmed as unordered factor\n")
+    cat("    class:", paste(swdl_class, collapse = ", "), "\n")
+  }
+}
 
 cat("✓ Variable type conversion complete\n\n")
 
@@ -2658,6 +2695,10 @@ for (var in binary_vars)
   if (var %in% names(method) && var %in% vars_with_missing)
     method[var] <- "logreg"
 for (var in ordered_vars)
+  if (var %in% names(method) && var %in% vars_with_missing)
+    method[var] <- "polr"
+# polr_unordered_vars: same imputation method as ordered, but stored unordered
+for (var in polr_unordered_vars)
   if (var %in% names(method) && var %in% vars_with_missing)
     method[var] <- "polr"
 for (var in unordered_categorical)
@@ -3183,10 +3224,11 @@ imputation_parameters <- list(
   method                           = method,
   predictor_matrix                 = pred,
   variable_types = list(
-    continuous  = continuous_vars,
-    binary      = binary_vars,
-    ordered     = ordered_vars,
-    unordered   = unordered_categorical
+    continuous      = continuous_vars,
+    binary          = binary_vars,
+    ordered         = ordered_vars,
+    polr_unordered  = polr_unordered_vars,
+    unordered       = unordered_categorical
   ),
   likert_items_as_pmm              = likert_items,
   excluded_variables               = c(outcome, problematic_vars),
@@ -3237,9 +3279,10 @@ cat(sprintf("  Logreg (binary):                     %d\n",
             sum(method == "logreg")))
 cat(sprintf("  Polr (ordered):                      %d\n",
             sum(method == "polr")))
-cat(sprintf("    Includes: fall2, stop_wdl_exp_combined, alc_use,\n"))
-cat(sprintf("              education, income, employment,\n"))
-cat(sprintf("              driving_freq, gen_health, sleep aids\n"))
+cat(sprintf("    Includes: fall2, alc_use, education, income,\n"))
+cat(sprintf("              employment, driving_freq, gen_health, sleep aids\n"))
+cat(sprintf("    Includes: stop_wdl_exp_combined (nominal — unordered factor,\n"))
+cat(sprintf("              imputed with polr, dummy-coded in regression)\n"))
 cat(sprintf("  Polyreg (unordered):                 %d\n",
             sum(method == "polyreg")))
 cat(sprintf("  Not imputed:                         %d\n\n",
@@ -3253,8 +3296,11 @@ cat("KEY DECISIONS:\n")
 cat("  • Outcome (freq_dich) excluded from imputation dataset\n")
 cat("  • All Likert items (belief/COM-B, 5-point) → PMM\n")
 cat("  • wdl_symptom_count (0-4 count) → PMM\n")
-cat("  • fall2 (0=none, 1=minor, 2=serious) → polr\n")
-cat("  • stop_wdl_exp_combined (0-5) → polr\n")
+cat("  • fall2 (0=none, 1=minor, 2=serious) → polr (ordered)\n")
+cat("  • stop_wdl_exp_combined (nominal categories) → polr,\n")
+cat("      stored as UNORDERED factor (dummy coding in regression)\n")
+cat("      FIX: prevents polynomial contrast (.L/.Q/.C) vs dummy\n")
+cat("      coding mismatch between MI and complete-case models\n")
 cat("  • alc_use (0-4 ordinal, combined from sex-specific items) → polr\n")
 cat("  • prov_terr → polyreg\n")
 cat("  • n_health_conditions removed (derived — recalculated post-imputation)\n")
@@ -3297,6 +3343,7 @@ cat("═════════════════════════
 
 
 
+
 ## Imputation
 ```{r}
 #==============================================================================
@@ -3307,80 +3354,50 @@ cat("═════════════════════════
 # Outputs: Imputed datasets + full diagnostic report
 #
 # CHUNK 7 PARAMETERS CARRIED FORWARD:
-#   m     = 42                (Von Hippel, 2020 FMI quadratic rule;
+#   m     = 23                (Von Hippel, 2020 FMI quadratic rule;
 #                              CV(SE) = 5% precision target;
-#                              White et al. 2011 floor = 18, min = 20)
+#                              White et al. 2011 floor = % missing, min = 20)
 #   maxit = 30                (Gelman-Rubin PSRF convergence experiment;
-#                              first maxit achieving PSRF < 1.1 for all vars;
-#                              max PSRF = 1.0637, mean PSRF = 1.0086)
-#   ridge = 1e-3              (stability stabiliser, van Buuren §6.4.2;
-#                              1 logged event at baseline — no structural fixes
-#                              required beyond ridge)
-#   mincor = 0.07, minpuc = 0.10  (predictor matrix, avg 23.5 predictors/model;
-#                                   2746 active slots of 13572 possible)
-#   Variables imputed: 100   (96 PMM, 0 logreg, 4 polr, 0 polyreg)
-#   Variables not imputed: 17 (complete or derived)
+#                              first maxit achieving PSRF < 1.1 for all vars)
+#   ridge = 1e-3              (stability stabiliser, van Buuren §6.4.2)
+#   mincor = 0.07, minpuc = 0.10  (predictor matrix, avg 22.3 predictors/model)
 #
-# CHUNK 7 PARAMETER AMENDMENT (applied at start of this chunk):
-#   income: polr → pmm
-#   Reason: polr overcorrected toward middle income categories (levels 2-3)
-#   despite observed distribution skewing high (43.8% at level 5).
-#   With only 9 missing values, PMM donor-matching better respects the
-#   observed high-income skew than ordinal regression.
-#   Reference: Van Buuren (2018) §6.3 — PMM preferred when model-based
-#   methods produce implausible distributions with sparse missingness.
-#   Polr variables remaining after fix: fall2, stop_wdl_exp_combined,
-#   alc_use, gen_health (income moved to PMM; updated method count:
-#   97 PMM, 0 logreg, 3 polr, 0 polyreg)
+# VARIABLE TYPE ASSIGNMENTS (from Chunk 7):
+#   PMM (continuous + all Likert/COM-B items):
+#       All continuous variables (age, med_quant, phq2_score, osss_3_score,
+#       n_physical_conditions, n_ment_conditions, n_sleep_conditions,
+#       wdl_symptom_count, bzra_daily_diazepam_eq, c_lengthofuse),
+#       belief/COM-B Likert items (benefit_1/4/5/6, side_effects_1:4,
+#       adls_1:2, dependence_1:3, motivation_1:3, capability_1/capability,
+#       desires_1:2, inf_hcp_1/3),
+#       DBAS, BFI, SURPS, CISS personality scale items
+#   Logreg (1):   sex
+#   Polr (ordered factors):
+#       education, income, employment, driving_freq, gen_health, fall2,
+#       alc_use, sleep_aids variables
+#   Polr / unordered storage (1):
+#       stop_wdl_exp_combined — nominal categories, stored as UNORDERED
+#       factor so downstream models use dummy coding, not polynomial
+#       contrasts; imputed with polr, coefficients labelled 1/2/3/4/5
+#   Polyreg (1):  prov_terr
+#   Not imputed:  bzra_weekly_diazepam_eq (derived: daily × 7,
+#                 recalculated in Part E),
+#                 n_health_conditions (derived: sum of components,
+#                 recalculated in Part E),
+#                 complete variables, outcome (freq_dich)
 #
-# MISSINGNESS PROFILE (Chunk 7 Part A):
-#   Total cells missing:  6063 / 49796 (12.18%)
-#   Complete cases:       311 / 422 (73.7%)
-#   Severity breakdown:   25 minimal (<5%), 2 low (5-10%),
-#                         91 moderate (10-25%), 0 high/very high
-#   Highest missingness:  ciss11-ciss21 (17.1%), surps17-surps23_r (16.8%)
-#
-# CONVERGENCE EXPERIMENT (Chunk 7 Part F):
-#   maxit=10: max PSRF=1.2965, mean=1.0380, N>1.1: 16  — NOT CONVERGED
-#   maxit=20: max PSRF=1.1402, mean=1.0121, N>1.1:  1  — NOT CONVERGED
-#   maxit=30: max PSRF=1.0637, mean=1.0086, N>1.1:  0  — CONVERGED ✓
-#   maxit=40: max PSRF=1.0460, mean=1.0073, N>1.1:  0  — CONVERGED ✓
-#   → Selected maxit=30 (minimum sufficient for convergence)
-#
-# PREVIOUS RUN RESULTS (first run, income=polr):
-#   B1. Convergence (PSRF):          ✓ PASS  max=1.0141, mean=1.0013
-#   D1. Completeness:                ✓ PASS  (100 vars × 42 datasets)
-#   D2. PMM range preservation:      ✓ PASS  (96 PMM vars)
-#   D3. Mean/SD (|SMD| ≤ 0.5):       ✓ PASS  median=0.053, max=0.409
-#   D4. Between-imputation variance: ✓ PASS  median RIV=0.016, max=0.063
-#   D5. FMI (median / max):          0.016 / 0.060
-#   D6. Categorical proportions:     ⚠️ income flagged (polr overcorrection)
-#   D7. Intra-scale correlations:    ✓ PASS  (CISS, SURPS, DBAS, BFI)
-#   → income switched polr → PMM; re-running to resolve D6 flag
-#
-# VARIABLE TYPE ASSIGNMENTS (after income fix):
-#   PMM (97):    All continuous variables + all Likert items + income
-#                (belief/COM-B 5-point: 22 items; personality scales: 70 items)
-#   Polr (3):    fall2 (0-3), stop_wdl_exp_combined (0-5), alc_use (0-4),
-#                gen_health (1-5 ordered factor)
-#   Polyreg (0): none
-#   Not imputed: bzra_weekly_diazepam_eq (derived: daily × 7),
-#                n_health_conditions (derived: sum of components),
-#                complete variables, outcome (freq_dich)
-#
-# LOGGED EVENTS (Chunk 7 Part D5 + first run):
-#   1 event: dropped_predictor for bzra_weekly_diazepam_eq (collinear)
-#   → Not a concern: this variable is excluded from imputation (method = "")
-#   → No structural fixes applied; ridge = 1e-3 sufficient
+# OUTCOME:
+#   freq_dich (0/1 = stoppers, 2 = continuers) — excluded from imputation
+#   dataset in Chunk 7; added back post-imputation in Part F
 #
 # DOWNSTREAM USAGE NOTE:
 #   Two output objects are saved:
 #     • mice_imputation_object.rds  — the raw mids object from mice().
 #         bzra_weekly_diazepam_eq NAs are NOT filled here (derived variable).
-#         Use this only if you need mice::pool() on variables that were
-#         directly imputed. Do NOT use it for bzra_weekly_diazepam_eq or
-#         n_health_conditions — these are only correct in the list below.
-#     • imputed_datasets_final.rds  — list of m=42 complete data frames.
+#         n_health_conditions is NOT present (removed in Chunk 7 Part B4).
+#         freq_dich is NOT present (excluded from imputation).
+#         Use only for mice::pool() on directly imputed variables.
+#     • imputed_datasets_final.rds  — list of m=23 complete data frames.
 #         All derived variables recalculated (Part E). Outcome added (Part F).
 #         This is the primary object for Chunk 9 onward.
 #==============================================================================
@@ -3415,62 +3432,16 @@ if (file.exists("analysis_variable_lists.rds")) {
 }
 
 cat("✓ Loaded imputation-ready dataset\n")
-cat("  Dimensions:", nrow(df_imp), "rows ×", ncol(df_imp), "columns\n")
-cat("  Overall missingness: 12.18% (6063 / 49796 cells)\n")
-cat("  Complete cases: 311 / 422 (73.7%)\n\n")
+cat("  Dimensions:", nrow(df_imp), "rows ×", ncol(df_imp), "columns\n\n")
 
 cat("✓ Loaded optimized parameters from Chunk 7\n")
 cat("  m     =", imp_params$optimal_m,
     "(Von Hippel, 2020 FMI quadratic rule)\n")
 cat("  maxit =", imp_params$optimal_maxit,
-    "(Gelman-Rubin PSRF; converged at maxit=30,\n")
-cat("                                       max PSRF=1.0637, mean PSRF=1.0086)\n")
+    "(Gelman-Rubin PSRF convergence experiment)\n")
 cat("  ridge =", imp_params$ridge_penalty, "(van Buuren §6.4.2)\n")
 cat("  Variables to impute:", imp_params$n_vars_to_impute, "\n")
-cat("  Avg predictors/model: 23.5 (mincor=0.07, minpuc=0.10)\n\n")
-
-# =============================================================================
-# INCOME FIX: Switch polr → PMM
-# =============================================================================
-# Applied before mice() based on first-run D6 diagnostic showing polr
-# overcorrected income toward middle categories (levels 2-3) despite
-# observed distribution skewing high (43.8% at level 5).
-# With only 9 missing values, PMM donor-matching is more appropriate.
-# Reference: Van Buuren (2018) §6.3.
-# =============================================================================
-
-cat("═══════════════════════════════════════════════════════════════\n")
-cat("INCOME METHOD AMENDMENT: polr → PMM\n")
-cat("═══════════════════════════════════════════════════════════════\n\n")
-
-cat("REASON:\n")
-cat("  First-run D6 diagnostic revealed polr overcorrection for income:\n")
-cat("  Observed:  Level 1=0.7%, 2=10.4%, 3=18.4%, 4=26.6%, 5=43.8%\n")
-cat("  Imputed:   Level 1=5.3%, 2=25.1%, 3=37.6%, 4=13.2%, 5=18.8%\n")
-cat("  Shifts:    Level 2: +14.7%, Level 3: +19.2% (large overcorrection)\n")
-cat("             Level 4: -13.4%, Level 5: -25.0% (large underprediction)\n")
-cat("  N missing: 9 — too sparse for polr to estimate reliably.\n")
-cat("  Fix: PMM donor-matches from observed high-income participants\n")
-cat("       with similar covariate profiles.\n\n")
-
-cat("Before fix — income method:", imp_params$method["income"], "\n")
-imp_params$method["income"] <- "pmm"
-cat("After fix  — income method:", imp_params$method["income"], "\n\n")
-
-cat("UPDATED METHOD COUNTS:\n")
-cat(sprintf("  PMM (continuous + Likert + income): %d\n",
-            sum(imp_params$method == "pmm")))
-cat(sprintf("  Logreg (binary):                    %d\n",
-            sum(imp_params$method == "logreg")))
-cat(sprintf("  Polr (ordered):                     %d\n",
-            sum(imp_params$method == "polr")))
-cat(sprintf("    Remaining polr variables:\n"))
-for (v in names(imp_params$method[imp_params$method == "polr"]))
-  cat(sprintf("      • %s\n", v))
-cat(sprintf("  Polyreg (unordered):                %d\n",
-            sum(imp_params$method == "polyreg")))
-cat(sprintf("  Not imputed:                        %d\n\n",
-            sum(imp_params$method == "")))
+cat("  Avg predictors/model: 22.3 (mincor=0.07, minpuc=0.10)\n\n")
 
 # -----------------------------------------------------------------------------
 # PART A: RUNNING MULTIPLE IMPUTATION
@@ -3485,61 +3456,65 @@ cat("─────────────────────────
 cat("  Number of imputations (m):", imp_params$optimal_m,
     "(Von Hippel, 2020 FMI quadratic rule; CV(SE)=5%)\n")
 cat("  Iterations (maxit):       ", imp_params$optimal_maxit,
-    "(Gelman-Rubin PSRF convergence; first maxit with max PSRF < 1.1)\n")
+    "(Gelman-Rubin PSRF convergence experiment;\n")
+cat("                               first maxit with max PSRF < 1.1)\n")
 cat("  Ridge penalty:            ", imp_params$ridge_penalty,
-    "(van Buuren §6.4.2; 1 benign logged event at baseline)\n")
+    "(van Buuren §6.4.2)\n")
 cat("  Variables to impute:      ", imp_params$n_vars_to_impute, "\n")
-cat("  Avg predictors/model:      23.5 (2746 active slots)\n")
-cat("  Imputation methods (after income fix):\n")
-cat("    • PMM:    ", sum(imp_params$method == "pmm"),
-    "vars (continuous + all Likert + income)\n")
-cat("    • Logreg: ", sum(imp_params$method == "logreg"),  "vars\n")
-cat("    • Polr:   ", sum(imp_params$method == "polr"),
-    "vars (fall2, stop_wdl_exp_combined, alc_use, gen_health)\n")
-cat("    • Polyreg:", sum(imp_params$method == "polyreg"), "vars\n\n")
+cat("  Avg predictors/model:      22.3 (mincor=0.07, minpuc=0.10)\n")
+cat("  Imputation methods:\n")
+cat("    • PMM:     ", sum(imp_params$method == "pmm"),
+    "vars (continuous + all Likert/COM-B + personality scale items)\n")
+cat("    • Logreg:  ", sum(imp_params$method == "logreg"),
+    "vars (sex)\n")
+cat("    • Polr:    ", sum(imp_params$method == "polr"),
+    "vars (education, income, employment, driving_freq, gen_health,\n")
+cat("               fall2, alc_use, sleep_aids, stop_wdl_exp_combined)\n")
+cat("    • Polyreg: ", sum(imp_params$method == "polyreg"),
+    "vars (prov_terr)\n")
+cat("    • Not imputed:", sum(imp_params$method == ""),
+    "vars (derived, complete, or outcome)\n\n")
 
 cat("JUSTIFICATION:\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  m:     ", imp_params$optimal_m_justification,    "\n\n")
 cat("  maxit: ", imp_params$optimal_maxit_justification, "\n\n")
 
-cat("MISSINGNESS PROFILE (from Chunk 7 Part A):\n")
+cat("VARIABLE TYPE NOTES:\n")
 cat("─────────────────────────────────────────────────────────────\n")
-cat("  Overall: 12.18% missing (6063 / 49796 cells)\n")
-cat("  Severity: 25 minimal (<5%), 2 low (5-10%), 91 moderate (10-25%)\n")
-cat("  Highest: ciss11-21 (17.1%), surps17-surps23_r (16.8%)\n")
-cat("  No variables with >25% missingness\n\n")
+cat("  All Likert belief/COM-B items (5-point) → PMM\n")
+cat("    Rationale: PMM donor-matching preferred over ordered regression\n")
+cat("    for items treated as continuous in downstream analyses.\n")
+cat("  wdl_symptom_count (0-4 integer count) → PMM\n")
+cat("  fall2 (0=none, 1=minor, 2=serious) → polr (ordered)\n")
+cat("  stop_wdl_exp_combined (nominal categories) → polr,\n")
+cat("    stored as UNORDERED factor to produce dummy-coded coefficients\n")
+cat("    (1/2/3/4/5) rather than polynomial contrasts (.L/.Q/.C)\n")
+cat("    in downstream regression models.\n")
+cat("  alc_use (0=Never … 4=Very high, ordered) → polr\n")
+cat("  prov_terr (unordered nominal) → polyreg\n")
+cat("  bzra_weekly_diazepam_eq excluded (method = ''); recalculated\n")
+cat("    post-imputation in Part E as: weekly = daily × 7\n")
+cat("  n_health_conditions excluded; recalculated in Part E as:\n")
+cat("    n_physical_conditions + n_ment_conditions + n_sleep_conditions\n\n")
 
-cat("CHUNK 7 ADJUSTMENTS APPLIED:\n")
+cat("CHUNK 7 ADJUSTMENTS APPLIED TO PREDICTOR MATRIX:\n")
 cat("─────────────────────────────────────────────────────────────\n")
 
 if (!is.null(imp_params$redundant_predictors_zeroed) &&
     length(imp_params$redundant_predictors_zeroed) > 0) {
   for (v in imp_params$redundant_predictors_zeroed)
     cat(sprintf("  • %-35s zeroed as predictor (r = 1)\n", v))
-}
-
-polr_to_pmm <- names(imp_params$method)[
-  imp_params$method == "pmm" &
-    names(imp_params$method) %in% imp_params$variable_types$ordered
-]
-if (length(polr_to_pmm) > 0) {
-  cat(sprintf("  • %d ordered vars switched polr → PMM:\n", length(polr_to_pmm)))
-  for (v in polr_to_pmm) cat(sprintf("      %s\n", v))
 } else {
-  cat("  • No polr → PMM switches from Chunk 7 D5\n")
+  cat("  • No perfectly correlated predictors zeroed\n")
 }
-
-cat("  • income: polr → PMM (first-run D6 diagnostic — see above)\n")
-cat("  • bzra_weekly_diazepam_eq excluded from imputation\n")
-cat("    (derived: weekly = daily × 7; recalculated in Part E)\n")
-cat("  • 1 logged event in Chunk 7 D5 baseline probe:\n")
-cat("    dropped_predictor for bzra_weekly_diazepam_eq — benign\n")
-cat("    (variable excluded from imputation; no structural fix needed)\n")
+cat("  • bzra_weekly_diazepam_eq excluded from imputation (derived)\n")
 cat("  • ridge = 1e-3 applied to all mice() calls\n\n")
 
 # Run MICE
-cat("Starting imputation (m=42, maxit=30, ridge=1e-3)...\n")
+cat("Starting imputation (m=", imp_params$optimal_m,
+    ", maxit=", imp_params$optimal_maxit,
+    ", ridge=", imp_params$ridge_penalty, ")...\n", sep = "")
 cat("This may take several minutes...\n\n")
 
 start_time <- Sys.time()
@@ -3569,9 +3544,10 @@ if (n_logged > 0) {
   cat("⚠️  LOGGED EVENTS DURING FINAL IMPUTATION:\n")
   cat("─────────────────────────────────────────────────────────────\n")
   cat("  Total events:", n_logged, "\n")
-  cat("  NOTE: 1 dropped_predictor event for bzra_weekly_diazepam_eq\n")
-  cat("  was observed in Chunk 7 D5 and first run — expected here.\n")
-  cat("  Any additional events beyond this should be investigated.\n\n")
+  cat("  NOTE: Any dropped_predictor events for bzra_weekly_diazepam_eq\n")
+  cat("  are expected — this variable is excluded from imputation\n")
+  cat("  (method = '') and its column presence in the predictor matrix\n")
+  cat("  may trigger a benign warning. All other events warrant review.\n\n")
   event_summary <- table(imp_final$loggedEvents$out)
   cat("  Event types:\n")
   for (event in names(event_summary))
@@ -3593,9 +3569,9 @@ cat("═════════════════════════
 cat("PART B: CONVERGENCE DIAGNOSTICS\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
-cat("EXPECTED: Convergence confirmed at maxit=30 in Chunk 7 experiment\n")
-cat("  and first run (max PSRF=1.0141, mean=1.0013). Switching income\n")
-cat("  from polr to PMM should not affect convergence.\n\n")
+cat("EXPECTED: Convergence at maxit=30 was confirmed in the Chunk 7\n")
+cat("  experiment (Gelman-Rubin PSRF < 1.1). Full imputation chains\n")
+cat("  should replicate this result.\n\n")
 
 # ── B1. Gelman-Rubin PSRF ─────────────────────────────────────────────────────
 cat("B1. Gelman-Rubin PSRF on final imputation\n")
@@ -3645,8 +3621,7 @@ if (!is.null(psrf_final)) {
               if (max_psrf < 1.1) "✓" else "⚠️"))
   cat(sprintf("  Mean PSRF:   %.4f\n", mean_psrf))
   cat(sprintf("  N > 1.1:     %d / %d\n", n_above, length(psrf_clean)))
-  cat(sprintf("  Reference:   Chunk 7 pilot max=1.0637, mean=1.0086, N>1.1: 0\n"))
-  cat(sprintf("               First run    max=1.0141, mean=1.0013, N>1.1: 0\n"))
+  cat(sprintf("  Reference:   Chunk 7 convergence experiment (maxit=30)\n"))
 
   if (converged) {
     cat("  ✓ CONVERGED — all chains settled (PSRF < 1.1)\n\n")
@@ -3677,23 +3652,22 @@ cat("─────────────────────────
 vars_to_plot <- c(
   "age", "education", "income",
   "phq2_score", "osss_3_score", "med_quant",
-  "ciss11", "ciss21", "surps17", "surps23_r",
+  "alc_use", "gen_health", "fall2",
   "side_effects_1", "dependence_1",
   "motivation_1", "desires_1", "capability",
-  "benefit_1", "adls_1", "inf_hcp_1"
+  "benefit_1", "adls_1", "inf_hcp_1",
+  "stop_wdl_exp_combined", "prov_terr"
 )
 vars_to_plot <- vars_to_plot[
   vars_to_plot %in% names(imp_params$method[imp_params$method != ""])]
 
 cat("  Plotting", length(vars_to_plot), "representative variables...\n")
-cat("  NOTE: income included to verify PMM chain behaviour after fix.\n")
 tryCatch({
   pdf("convergence_trace_plots_final.pdf", width = 14, height = 10)
   plot(imp_final, y = vars_to_plot,
        main = paste0("Final Imputation Trace Plots (m=",
                      imp_params$optimal_m, ", maxit=",
-                     imp_params$optimal_maxit,
-                     ", income=PMM)"))
+                     imp_params$optimal_maxit, ")"))
   dev.off()
   cat("  ✓ Saved: convergence_trace_plots_final.pdf\n\n")
 }, error = function(e)
@@ -3710,8 +3684,7 @@ cat("═════════════════════════
 cat("PURPOSE: Verify imputed values have plausible distributions.\n")
 cat("  Red = observed, Blue = imputed. Distributions should be similar\n")
 cat("  under MAR; systematic differences are not necessarily wrong but\n")
-cat("  warrant scrutiny (van Buuren, 2018 §6.6).\n")
-cat("  Highest-missingness variables (ciss11-21 at 17.1%) are included.\n\n")
+cat("  warrant scrutiny (van Buuren, 2018 §6.6).\n\n")
 
 continuous_to_plot <- vars_to_plot[
   vars_to_plot %in% imp_params$variable_types$continuous]
@@ -3765,8 +3738,8 @@ all_imp_list <- lapply(seq_len(imp_params$optimal_m),
 cat("D1. Completeness check\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  PURPOSE: Confirm every imputed variable has zero missing values\n")
-cat("           in every completed dataset (m=42, N=422).\n")
-cat("  NOTE: bzra_weekly_diazepam_eq is intentionally excluded —\n")
+cat("           in every completed dataset.\n")
+cat("  NOTE: bzra_weekly_diazepam_eq is intentionally excluded here —\n")
 cat("        recalculated as daily × 7 in Part E.\n\n")
 
 imp_vars <- names(imp_params$method[imp_params$method != ""])
@@ -3797,8 +3770,8 @@ cat("D2. Range preservation check (PMM variables)\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  PURPOSE: PMM imputes by matching observed donors, so imputed\n")
 cat("           values MUST lie within the observed range.\n")
-cat("  EXPECTED: All 97 PMM variables should pass (PMM is donor-based).\n")
-cat("  NOTE: income now included in PMM — verify its range here.\n\n")
+cat("  Applies to all continuous, Likert/COM-B, and personality scale\n")
+cat("  items assigned method = 'pmm'.\n\n")
 
 pmm_vars <- names(imp_params$method[imp_params$method == "pmm"])
 pmm_vars <- pmm_vars[pmm_vars %in% names(df_imp)]
@@ -3861,10 +3834,9 @@ cat("─────────────────────────
 cat("  PURPOSE: Under MAR the imputed and observed distributions\n")
 cat("           should be broadly similar. Large |SMD| > 0.5 flags\n")
 cat("           potential MNAR bias or miscoded variables.\n")
-cat("  NOTE: Personality scale items (ciss, surps, dbas, bfi) dominate\n")
-cat("        the missingness profile (16-17%). Moderate |SMD| for these\n")
-cat("        is expected if missingness is related to trait levels.\n")
-cat("  FIRST RUN: median |SMD|=0.053, max=0.409, all 96 vars passed.\n\n")
+cat("  NOTE: Personality scale items (CISS, SURPS, DBAS, BFI) account\n")
+cat("        for most of the missingness. Moderate |SMD| for these is\n")
+cat("        expected if missingness is related to trait levels.\n\n")
 
 vars_for_qc <- names(imp_params$method[imp_params$method == "pmm"])
 vars_for_qc <- vars_for_qc[vars_for_qc %in% names(df_imp)]
@@ -3937,8 +3909,7 @@ cat("─────────────────────────
 cat("  PURPOSE: Rubin's rules decompose variance into within (W) and\n")
 cat("           between (B) components. RIV = B/W. If B >> W for many\n")
 cat("           variables, m may be too small or chains have not mixed.\n")
-cat("  NOTE: m=42 selected for CV(SE)=5% (Von Hippel, 2020).\n")
-cat("  FIRST RUN: median RIV=0.016, max=0.063, all 94 vars stable.\n\n")
+cat("  NOTE: m=23 selected for CV(SE)=5% (Von Hippel, 2020).\n\n")
 
 riv_df <- data.frame()
 
@@ -3974,7 +3945,7 @@ if (nrow(riv_df) > 0) {
   cat(sprintf("  Max RIV:    %.4f\n\n", max(riv_df$RIV, na.rm = TRUE)))
 
   if (nrow(flagged_riv) > 0) {
-    cat("  HIGH RIV VARIABLES (B > W — consider increasing m beyond 42):\n")
+    cat("  HIGH RIV VARIABLES (B > W — consider increasing m beyond 23):\n")
     print(flagged_riv %>% arrange(desc(RIV)) %>% head(10),
           row.names = FALSE)
     cat("\n")
@@ -3990,8 +3961,7 @@ cat("D5. Fraction of Missing Information (FMI) per variable\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  PURPOSE: FMI quantifies how much variance is attributable\n")
 cat("           to missingness. High FMI (> 0.5) means estimates\n")
-cat("           are heavily influenced by the imputation model.\n")
-cat("  FIRST RUN: median FMI=0.016, max=0.060, no high FMI variables.\n\n")
+cat("           are heavily influenced by the imputation model.\n\n")
 
 fmi_df <- data.frame()
 
@@ -4039,54 +4009,29 @@ if (nrow(fmi_df) > 0) {
 # ── D6. Categorical distribution preservation ─────────────────────────────────
 cat("D6. Categorical distribution preservation\n")
 cat("─────────────────────────────────────────────────────────────\n")
-cat("  PURPOSE: For ordered variables (polr), check that imputed\n")
+cat("  PURPOSE: For ordered variables (polr) and the nominal polr\n")
+cat("           variable (stop_wdl_exp_combined), check that imputed\n")
 cat("           category proportions are plausible relative to observed.\n")
-cat("  Variables: fall2 (0-3), stop_wdl_exp_combined (0-5),\n")
-cat("             alc_use (0-4), gen_health (1-5)\n")
-cat("  NOTE: income removed from polr — no longer assessed here.\n")
-cat("  FIRST RUN: income flagged (max_prop_diff=0.25) — resolved by\n")
-cat("             switching income to PMM.\n\n")
+cat("  Variables assessed: education, income, employment, driving_freq,\n")
+cat("    gen_health, fall2, alc_use, sleep_aids items,\n")
+cat("    stop_wdl_exp_combined\n")
+cat("  ACTION: If max_prop_diff > 0.20 for any variable, consider\n")
+cat("    switching that variable from polr to PMM (see Van Buuren\n")
+cat("    2018 §6.3 — PMM preferred when ordinal regression produces\n")
+cat("    implausible distributions with sparse missingness).\n\n")
 
+# All polr variables (ordered + polr_unordered)
 ordered_imp_vars <- names(imp_params$method[
-  imp_params$method %in% c("polr", "pmm") &
-    names(imp_params$method) %in% imp_params$variable_types$ordered
+  imp_params$method == "polr" &
+    names(imp_params$method) %in% c(
+      imp_params$variable_types$ordered,
+      imp_params$variable_types$polr_unordered
+    )
 ])
 ordered_imp_vars <- ordered_imp_vars[
   ordered_imp_vars %in% names(df_imp) &
     sapply(df_imp[ordered_imp_vars], function(x) sum(is.na(x))) > 0
 ]
-
-# Income is now PMM but still ordinal — check it separately below
-cat("  INCOME DISTRIBUTION CHECK (PMM — primary fix verification):\n")
-cat("  ─────────────────────────────────────────────────────────\n")
-if ("income" %in% names(df_imp) && sum(is.na(df_imp$income)) > 0) {
-  orig_na_inc  <- is.na(df_imp$income)
-  obs_vals_inc <- df_imp$income[!orig_na_inc]
-  imp_vals_inc <- unlist(lapply(all_imp_list,
-                                function(d) d$income[orig_na_inc]))
-  obs_t_inc    <- prop.table(table(obs_vals_inc))
-  imp_t_inc    <- prop.table(table(imp_vals_inc))
-  all_levs_inc <- union(names(obs_t_inc), names(imp_t_inc))
-
-  cat("  N missing income:", sum(orig_na_inc), "\n")
-  cat("  Level  Observed  Imputed   Diff\n")
-  max_diff_inc <- 0
-  for (lv in sort(all_levs_inc)) {
-    obs_p <- if (lv %in% names(obs_t_inc)) obs_t_inc[lv] else 0
-    imp_p <- if (lv %in% names(imp_t_inc)) imp_t_inc[lv] else 0
-    diff  <- imp_p - obs_p
-    flag  <- if (abs(diff) > 0.10) "  ← large" else ""
-    max_diff_inc <- max(max_diff_inc, abs(diff))
-    cat(sprintf("    %s    %5.1f%%   %5.1f%%   %+5.1f%%%s\n",
-                lv, 100 * obs_p, 100 * imp_p, 100 * diff, flag))
-  }
-  if (max_diff_inc <= 0.20) {
-    cat("  ✓ Income distribution restored — PMM fix successful\n\n")
-  } else {
-    cat(sprintf("  ⚠️  Income max_prop_diff still %.2f — investigate further\n\n",
-                max_diff_inc))
-  }
-}
 
 cat_check_df <- data.frame()
 
@@ -4124,7 +4069,7 @@ if (nrow(cat_check_df) > 0) {
   cat(sprintf("  ⚠️  Large proportion shift (> 0.20):      %d\n\n",
               nrow(flagged_cat)))
   if (nrow(flagged_cat) > 0) {
-    cat("  FLAGGED VARIABLES:\n")
+    cat("  FLAGGED VARIABLES (consider switching to PMM):\n")
     print(flagged_cat, row.names = FALSE)
     cat("\n")
   }
@@ -4140,10 +4085,7 @@ cat("─────────────────────────
 cat("  PURPOSE: Items within the same scale should remain highly\n")
 cat("           correlated after imputation. A large r drop (> 0.1)\n")
 cat("           suggests the imputation broke the latent structure.\n")
-cat("  SCALES: CISS (21 items), SURPS (23 items, 6 reversed),\n")
-cat("          DBAS (16 items), BFI (10 items, 5 reversed)\n")
-cat("  FIRST RUN: all scales passed (r drops: CISS=0.026, SURPS=0.018,\n")
-cat("             DBAS=0.034, BFI=0.011). Expect similar results here.\n\n")
+cat("  SCALES: CISS, SURPS (with reversed items), DBAS, BFI\n\n")
 
 if (!is.null(analysis_vars)) {
   scale_pairs <- list()
@@ -4209,7 +4151,7 @@ if (nrow(cor_check_df) > 0) {
   print(cor_check_df, row.names = FALSE)
   flagged_cor <- cor_check_df[cor_check_df$flag == "⚠️ DROP", ]
   if (nrow(flagged_cor) > 0) {
-    cat(sprintf("\n  ⚠️  %d scale(s) show r drop > 0.1 — review minpuc\n",
+    cat(sprintf("\n  ⚠️  %d scale(s) show r drop > 0.1 — review minpuc setting\n",
                 nrow(flagged_cor)))
   } else {
     cat("\n  ✓ Within-scale correlations preserved across all scales\n")
@@ -4236,7 +4178,8 @@ cat("Recalculating for all", imp_params$optimal_m, "imputed datasets...\n\n")
 cat("E1. n_health_conditions\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  Formula: n_physical_conditions + n_ment_conditions + n_sleep_conditions\n")
-cat("  Removed from imputation in Chunk 7 Part B4 to avoid circularity.\n\n")
+cat("  Removed from imputation in Chunk 7 Part B4 to avoid circularity;\n")
+cat("  each component imputed separately and summed here.\n\n")
 
 for (i in seq_along(all_imp_list)) {
   d <- all_imp_list[[i]]
@@ -4264,12 +4207,14 @@ if (n_correct == nrow(d1)) {
 cat("E2. bzra_weekly_diazepam_eq\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  Formula: bzra_daily_diazepam_eq × 7\n")
-cat("  Excluded from mice() (method = '') to preserve mathematical\n")
-cat("  relationship with daily equivalent. NAs from confirmed users\n")
-cat("  with missing dose/freq filled here using imputed daily values.\n\n")
+cat("  Excluded from mice() (method = '') to preserve the mathematical\n")
+cat("  relationship with the daily equivalent. NAs from confirmed users\n")
+cat("  with missing dose/frequency data are filled here using imputed\n")
+cat("  daily values.\n\n")
 cat("  IMPORTANT: This recalculation applies to all_imp_list only.\n")
-cat("  mice_imputation_object.rds retains the original NAs.\n")
-cat("  Always use imputed_datasets_final.rds for bzra_weekly analyses.\n\n")
+cat("  mice_imputation_object.rds retains the original NAs for\n")
+cat("  bzra_weekly_diazepam_eq. Always use imputed_datasets_final.rds\n")
+cat("  for any analysis involving this variable.\n\n")
 
 for (i in seq_along(all_imp_list)) {
   d <- all_imp_list[[i]]
@@ -4301,9 +4246,9 @@ cat("═════════════════════════
 cat("PART F: ADDING OUTCOME VARIABLE BACK\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
-cat("  Outcome (freq_dich) was excluded from imputation in Chunk 7\n")
-cat("  to avoid conditioning imputed values on the dependent variable.\n")
-cat("  It is added back here from SIMOA_analysis.rds.\n\n")
+cat("  Outcome (freq_dich) was excluded from the imputation dataset in\n")
+cat("  Chunk 7 to avoid conditioning imputed predictor values on the\n")
+cat("  dependent variable. It is re-attached here from SIMOA_analysis.rds.\n\n")
 
 if (file.exists("SIMOA_analysis.rds")) {
   SIMOA_original <- readRDS("SIMOA_analysis.rds")
@@ -4340,11 +4285,11 @@ cat("═════════════════════════
 cat("TWO OBJECTS SAVED — USE GUIDANCE:\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  mice_imputation_object.rds  — raw mids object from mice()\n")
-cat("    • bzra_weekly_diazepam_eq: original NAs retained (not imputed)\n")
+cat("    • bzra_weekly_diazepam_eq: original NAs retained\n")
 cat("    • n_health_conditions: not present (removed in Chunk 7 Part B4)\n")
 cat("    • freq_dich: not present (excluded from imputation)\n")
 cat("    • Only use for mice::pool() on directly imputed variables\n\n")
-cat("  imputed_datasets_final.rds  — list of m=42 complete data frames\n")
+cat("  imputed_datasets_final.rds  — list of m=23 complete data frames\n")
 cat("    • All derived vars recalculated (Part E)\n")
 cat("    • Outcome (freq_dich) added back (Part F)\n")
 cat("    • PRIMARY object for Chunk 9 onward\n")
@@ -4363,7 +4308,8 @@ cat("─────────────────────────
 cat(sprintf("  Total variables: %d\n",   ncol(all_imp_list[[1]])))
 cat(sprintf("  Observations:    %d\n",   nrow(all_imp_list[[1]])))
 cat(sprintf("  Includes: freq_dich, all imputed vars,\n"))
-cat(sprintf("            bzra_weekly_diazepam_eq, n_health_conditions\n\n"))
+cat(sprintf("            bzra_weekly_diazepam_eq (recalculated),\n"))
+cat(sprintf("            n_health_conditions (recalculated)\n\n"))
 
 # -----------------------------------------------------------------------------
 # PART H: FINAL SUMMARY
@@ -4380,24 +4326,26 @@ cat("  Variables imputed:    ", imp_params$n_vars_to_impute, "\n")
 cat("  m (imputations):      ", imp_params$optimal_m,
     "(Von Hippel, 2020; CV(SE)=5%)\n")
 cat("  maxit (iterations):   ", imp_params$optimal_maxit,
-    "(Gelman-Rubin; max PSRF=1.0637 at maxit=30)\n")
+    "(Gelman-Rubin PSRF convergence experiment)\n")
 cat("  Ridge penalty:        ", imp_params$ridge_penalty,
     "(van Buuren §6.4.2)\n")
-cat("  Avg predictors/model:  23.5 (mincor=0.07, minpuc=0.10)\n")
+cat("  Avg predictors/model:  22.3 (mincor=0.07, minpuc=0.10)\n")
 cat("  Time elapsed:         ",
     round(as.numeric(elapsed_time), 2), "minutes\n\n")
 
-cat("IMPUTATION METHODS (after income fix):\n")
-cat(sprintf("  PMM (continuous + Likert + income): %d\n",
+cat("IMPUTATION METHODS:\n")
+cat(sprintf("  PMM (continuous + Likert/COM-B + personality items): %d\n",
             sum(imp_params$method == "pmm")))
-cat(sprintf("  Logreg (binary):                    %d\n",
+cat(sprintf("  Logreg (binary):                                      %d\n",
             sum(imp_params$method == "logreg")))
-cat(sprintf("  Polr (ordered):                     %d",
+cat(sprintf("  Polr (ordered + nominal/unordered):                   %d\n",
             sum(imp_params$method == "polr")))
-cat("  (fall2, stop_wdl_exp_combined, alc_use, gen_health)\n")
-cat(sprintf("  Polyreg (unordered):                %d\n",
+cat(sprintf("    Ordered:  education, income, employment, driving_freq,\n"))
+cat(sprintf("              gen_health, fall2, alc_use, sleep_aids items\n"))
+cat(sprintf("    Nominal (unordered storage): stop_wdl_exp_combined\n"))
+cat(sprintf("  Polyreg (unordered categorical):                      %d\n",
             sum(imp_params$method == "polyreg")))
-cat(sprintf("  Not imputed (derived/complete):     %d\n\n",
+cat(sprintf("  Not imputed (derived/complete/outcome):               %d\n\n",
             sum(imp_params$method == "")))
 
 cat("STATISTICAL VERIFICATION SUMMARY:\n")
@@ -4408,7 +4356,6 @@ if (!is.null(psrf_final)) {
   conv_status <- if (max(psrf_clean2) < 1.1) "✓ PASS" else "⚠️  FAIL"
   cat(sprintf("  B1. Convergence (PSRF):          %s  max=%.4f mean=%.4f\n",
               conv_status, max(psrf_clean2), mean(psrf_clean2)))
-  cat(sprintf("      First run reference:               max=1.0141 mean=1.0013\n"))
 }
 
 comp_status <- if (length(completeness_fails) == 0) "✓ PASS" else "⚠️  FAIL"
@@ -4416,7 +4363,7 @@ cat(sprintf("  D1. Completeness:                %s  (%d vars × %d datasets)\n",
             comp_status, length(imp_vars), imp_params$optimal_m))
 
 range_status <- if (length(range_fails) == 0) "✓ PASS" else "⚠️  REVIEW"
-cat(sprintf("  D2. PMM range preservation:      %s  (%d PMM vars incl. income)\n",
+cat(sprintf("  D2. PMM range preservation:      %s  (%d PMM vars)\n",
             range_status, length(pmm_vars)))
 
 if (nrow(quality_df) > 0) {
@@ -4440,9 +4387,8 @@ if (nrow(fmi_df) > 0)
 
 if (nrow(cat_check_df) > 0) {
   cat_status <- if (nrow(flagged_cat) == 0) "✓ PASS" else
-    sprintf("⚠️  %d vars flagged", nrow(flagged_cat))
+    sprintf("⚠️  %d vars flagged (consider polr → PMM)", nrow(flagged_cat))
   cat(sprintf("  D6. Categorical proportions:     %s\n", cat_status))
-  cat(sprintf("      Income (PMM fix):             see inline check above\n"))
 }
 
 if (nrow(cor_check_df) > 0) {
@@ -4457,23 +4403,22 @@ cat("LOGGED EVENTS:\n")
 if (n_logged == 0) {
   cat("  ✓ None — imputation completed cleanly\n\n")
 } else {
-  cat(sprintf("  ⚠️  %d events — review imputation_logged_events.csv\n", n_logged))
-  cat("      (1 dropped_predictor for bzra_weekly_diazepam_eq expected\n")
-  cat("       from Chunk 7 D5 — any additional events warrant review)\n\n")
+  cat(sprintf("  ⚠️  %d events — review imputation_logged_events.csv\n\n",
+              n_logged))
 }
 
 cat("KEY CITATIONS:\n")
 cat("─────────────────────────────────────────────────────────────\n")
-cat("  Von Hippel (2020) Sociol Methods Res 49(3):699-718  [m=42]\n")
+cat("  Von Hippel (2020) Sociol Methods Res 49(3):699-718  [m=23]\n")
 cat("  White et al. (2011) Stat Med 30(4):377-399          [m floor]\n")
 cat("  Gelman & Rubin (1992) Stat Sci 7(4):457-472         [maxit]\n")
 cat("  Brooks & Gelman (1998) J Comp Graph Stat 7(4):434   [maxit]\n")
-cat("  Van Buuren (2018) Flexible Imputation (2nd ed.)      [both, income fix]\n\n")
+cat("  Van Buuren (2018) Flexible Imputation (2nd ed.)      [both]\n\n")
 
 cat("OUTPUT OBJECTS:\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  PRIMARY:   imputed_datasets_final.rds\n")
-cat("             → m=42 complete datasets; all derived vars correct\n")
+cat("             → m=23 complete datasets; all derived vars correct\n")
 cat("             → freq_dich included; use for all Chunk 9 analyses\n")
 cat("  SECONDARY: mice_imputation_object.rds\n")
 cat("             → Raw mids object; bzra_weekly NAs unfilled\n")
@@ -4497,13 +4442,13 @@ if (n_logged > 0)
 cat("\n")
 cat("NEXT STEPS:\n")
 cat("  1. Review convergence_trace_plots_final.pdf\n")
-cat("     → Confirm chains intermingle freely (maxit=30 sufficient)\n")
-cat("  2. Check income inline D6 output above\n")
-cat("     → Imputed distribution should now mirror observed high-income skew\n")
-cat("  3. Review imputation_density_plots.pdf\n")
+cat("     → Confirm chains intermingle freely (no trends or drift)\n")
+cat("  2. Review imputation_density_plots.pdf\n")
 cat("     → Red (observed) and blue (imputed) should broadly overlap\n")
-cat("  4. Check imputation_quality_assessment.csv\n")
+cat("  3. Check imputation_quality_assessment.csv\n")
 cat("     → Flag any |SMD| > 0.5 for manuscript reporting\n")
+cat("  4. Check imputation_categorical_check.csv\n")
+cat("     → max_prop_diff > 0.20 for any polr variable → switch to PMM\n")
 cat("  5. Check imputation_scale_correlation_check.csv\n")
 cat("     → Confirm r drop < 0.1 for CISS, SURPS, DBAS, BFI\n")
 cat("  6. If all checks pass → Proceed to Chunk 9\n")
@@ -4513,6 +4458,7 @@ cat("═════════════════════════
 cat("✓ MULTIPLE IMPUTATION COMPLETE\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 ```
+
 
 
 
@@ -4607,10 +4553,14 @@ print(df_imp[miss_inc, show_vars])
 #   All operations performed on EACH imputed dataset separately
 #
 # NOTE ON DATA SOURCE:
-#   Loads imputed_datasets_final.rds (list of complete data frames).
-#   n_health_conditions was already added in Chunk 8 Part E.
+#   Loads imputed_datasets_final.rds (list of m=23 complete data frames
+#   from Chunk 8).
+#   n_health_conditions was recalculated in Chunk 8 Part E as:
+#     n_physical_conditions + n_ment_conditions + n_sleep_conditions
+#   bzra_weekly_diazepam_eq was recalculated in Chunk 8 Part E as:
+#     bzra_daily_diazepam_eq × 7
 #   freq_dich (outcome) was added back in Chunk 8 Part F.
-#   Neither requires re-derivation here.
+#   None of the above requires re-derivation here.
 #
 # NOTE ON REVERSED ITEMS:
 #   All reversals were performed in Chunk 6 and are present in the imputed
@@ -4645,6 +4595,19 @@ print(df_imp[miss_inc, show_vars])
 #     stopped_bzra = 1 → Stoppers/rare users (freq_dich 0 or 1)
 #     stopped_bzra = 0 → Continuers          (freq_dich 2)
 #   freq_dich is retained for sensitivity analyses.
+#
+# NOTE ON IMPUTATION METHODS (from Chunk 8):
+#   PMM:     All continuous variables + all Likert/COM-B items +
+#            personality scale items (DBAS, BFI, SURPS, CISS)
+#   Logreg:  sex
+#   Polr:    education, income, employment, driving_freq, gen_health,
+#            fall2, alc_use, sleep_aids items,
+#            stop_wdl_exp_combined (nominal — unordered factor,
+#            dummy-coded in regression)
+#   Polyreg: prov_terr
+#   Not imputed: bzra_weekly_diazepam_eq (recalculated in Chunk 8 Part E),
+#                n_health_conditions (recalculated in Chunk 8 Part E),
+#                freq_dich (outcome — added in Chunk 8 Part F)
 #==============================================================================
 
 library(dplyr)
@@ -4706,6 +4669,17 @@ if ("n_health_conditions" %in% names(all_imputed[[1]])) {
   cat("  ⚠️  n_health_conditions NOT present — check Chunk 8 Part E output\n")
 }
 
+# bzra_weekly_diazepam_eq — recalculated in Chunk 8 Part E as daily × 7
+if ("bzra_weekly_diazepam_eq" %in% names(all_imputed[[1]])) {
+  n_na_weekly <- sum(is.na(all_imputed[[1]]$bzra_weekly_diazepam_eq))
+  cat(sprintf("  ✓ bzra_weekly_diazepam_eq present (recalculated in Chunk 8 Part E) | NAs: %d\n",
+              n_na_weekly))
+  if (n_na_weekly > 0)
+    cat("  ⚠️  Unexpected NAs — check Chunk 8 Part E bzra recalculation\n")
+} else {
+  cat("  ⚠️  bzra_weekly_diazepam_eq NOT present — check Chunk 8 Part E output\n")
+}
+
 # freq_dich — outcome variable, added back in Chunk 8 Part F
 if ("freq_dich" %in% names(all_imputed[[1]])) {
   cat("  ✓ freq_dich present (outcome — added in Chunk 8 Part F)\n")
@@ -4722,14 +4696,39 @@ if ("freq_dich" %in% names(all_imputed[[1]])) {
 cat("\n")
 
 # -----------------------------------------------------------------------------
-# VERIFICATION: alc_use (imputed in Chunk 8 as polr, ordered 0-4)
+# VERIFICATION: Polr-imputed categorical variables from Chunk 8
 # -----------------------------------------------------------------------------
-cat("VERIFICATION: Checking alc_use (imputed in Chunk 8 as polr, ordered 0-4)\n")
+cat("VERIFICATION: Checking polr/polyreg-imputed variables from Chunk 8\n")
 cat("─────────────────────────────────────────────────────────────\n")
-if ("alc_use" %in% names(all_imputed[[1]])) {
-  cat("  ✓ alc_use present\n")
+cat("  Polr:    education, income, employment, driving_freq, gen_health,\n")
+cat("           fall2, alc_use, sleep_aids items, stop_wdl_exp_combined\n")
+cat("  Polyreg: prov_terr\n\n")
+
+polr_vars_to_check <- c(
+  "education", "income", "employment", "driving_freq", "gen_health",
+  "fall2", "alc_use", "stop_wdl_exp_combined", "prov_terr"
+)
+
+for (v in polr_vars_to_check) {
+  if (v %in% names(all_imputed[[1]])) {
+    n_na <- sum(is.na(all_imputed[[1]][[v]]))
+    cat(sprintf("  ✓ %-30s | NAs in imputation 1: %d\n", v, n_na))
+    if (n_na > 0)
+      cat(sprintf("  ⚠️  Unexpected NAs in %s — check Chunk 8 output\n", v))
+  } else {
+    cat(sprintf("  ⚠️  %-30s NOT present — check Chunk 8 output\n", v))
+  }
+}
+
+# sleep_aids variables (dynamic — check any that survived into imputed data)
+sleep_aid_vars <- grep("^sleep_aid", names(all_imputed[[1]]), value = TRUE)
+if (length(sleep_aid_vars) > 0) {
+  for (v in sleep_aid_vars) {
+    n_na <- sum(is.na(all_imputed[[1]][[v]]))
+    cat(sprintf("  ✓ %-30s | NAs in imputation 1: %d\n", v, n_na))
+  }
 } else {
-  cat("  ⚠️  alc_use NOT present — check Chunk 8 output\n")
+  cat("  ℹ️  No sleep_aid* variables detected in imputed data\n")
 }
 cat("\n")
 
@@ -5416,6 +5415,33 @@ if ("n_health_conditions" %in% names(all_imputed[[1]])) {
   validation_passed <- FALSE
 }
 
+# bzra_weekly_diazepam_eq — recalculated in Chunk 8 Part E as daily × 7
+if ("bzra_weekly_diazepam_eq" %in% names(all_imputed[[1]])) {
+  n_na_w <- sum(is.na(all_imputed[[1]]$bzra_weekly_diazepam_eq))
+  cat(sprintf("  ✓ bzra_weekly_diazepam_eq present | NAs: %d\n", n_na_w))
+  if (n_na_w > 0) {
+    cat("    ⚠️  Unexpected NAs — check Chunk 8 Part E bzra recalculation\n")
+    validation_passed <- FALSE
+  } else {
+    # Spot-check: weekly should equal daily × 7
+    daily_w  <- all_imputed[[1]]$bzra_daily_diazepam_eq
+    weekly_w <- all_imputed[[1]]$bzra_weekly_diazepam_eq
+    if (!is.null(daily_w)) {
+      n_mismatch <- sum(abs(weekly_w - daily_w * 7) > 1e-8, na.rm = TRUE)
+      if (n_mismatch == 0) {
+        cat("    ✓ weekly = daily × 7 verified for all rows\n")
+      } else {
+        cat(sprintf("    ⚠️  %d rows where weekly ≠ daily × 7 — investigate\n",
+                    n_mismatch))
+        validation_passed <- FALSE
+      }
+    }
+  }
+} else {
+  cat("  ✗ bzra_weekly_diazepam_eq MISSING — check Chunk 8 Part E\n")
+  validation_passed <- FALSE
+}
+
 # freq_dich — original 3-level outcome, added back in Chunk 8 Part F
 if ("freq_dich" %in% names(all_imputed[[1]])) {
   cat("  ✓ freq_dich present (3-level reference outcome)\n")
@@ -5468,20 +5494,50 @@ if ("stopped_bzra" %in% names(all_imputed[[1]])) {
 }
 cat("\n")
 
-# ── D8. alc_use present and complete ──────────────────────────────────────────
-cat("D8. alc_use (imputed in Chunk 8 as polr, ordered 0-4)\n")
+# ── D8. Polr/polyreg-imputed variables complete ────────────────────────────────
+cat("D8. Polr/polyreg-imputed variables completeness\n")
 cat("─────────────────────────────────────────────────────────────\n")
-if ("alc_use" %in% names(all_imputed[[1]])) {
-  n_na_alc <- sum(is.na(all_imputed[[1]]$alc_use))
-  cat(sprintf("  ✓ alc_use present | NAs in imputation 1: %d\n", n_na_alc))
-  if (n_na_alc > 0) {
-    cat("  ⚠️  Unexpected NAs — alc_use should be fully imputed\n")
+cat("  Checking: education, income, employment, driving_freq, gen_health,\n")
+cat("            fall2, alc_use, stop_wdl_exp_combined, prov_terr\n\n")
+
+polr_check_vars <- c(
+  "education", "income", "employment", "driving_freq", "gen_health",
+  "fall2", "alc_use", "stop_wdl_exp_combined", "prov_terr"
+)
+
+polr_check_fail <- FALSE
+for (v in polr_check_vars) {
+  if (v %in% names(all_imputed[[1]])) {
+    n_na <- sum(is.na(all_imputed[[1]][[v]]))
+    if (n_na > 0) {
+      cat(sprintf("  ⚠️  %-30s: %d unexpected NAs — check Chunk 8\n", v, n_na))
+      polr_check_fail <- TRUE
+      validation_passed <- FALSE
+    } else {
+      cat(sprintf("  ✓ %-30s complete\n", v))
+    }
+  } else {
+    cat(sprintf("  ⚠️  %-30s NOT present — check Chunk 8 output\n", v))
+    polr_check_fail <- TRUE
     validation_passed <- FALSE
   }
-} else {
-  cat("  ✗ alc_use MISSING\n")
-  validation_passed <- FALSE
 }
+
+# sleep_aids variables — checked dynamically
+if (length(sleep_aid_vars) > 0) {
+  for (v in sleep_aid_vars) {
+    n_na <- sum(is.na(all_imputed[[1]][[v]]))
+    if (n_na > 0) {
+      cat(sprintf("  ⚠️  %-30s: %d unexpected NAs\n", v, n_na))
+      validation_passed <- FALSE
+    } else {
+      cat(sprintf("  ✓ %-30s complete\n", v))
+    }
+  }
+}
+
+if (!polr_check_fail && length(sleep_aid_vars) >= 0)
+  cat("\n  ✓ All polr/polyreg-imputed variables complete\n")
 cat("\n")
 
 # =============================================================================
@@ -5533,7 +5589,8 @@ cat("  ✓ All subscales use reversed items (_r) from Chunk 6\n")
 cat("  ✓ Composites: inline reversal for capabilityC, pharmacistC, prescriberC\n")
 cat("  ✓ Binary outcome stopped_bzra created from freq_dich (Part B3)\n")
 cat("  ✓ Reliability assessed on imputation 1\n")
-cat("  ✓ freq_dich and n_health_conditions present (from Chunk 8)\n\n")
+cat("  ✓ freq_dich, n_health_conditions, bzra_weekly_diazepam_eq\n")
+cat("    present (from Chunk 8 Parts E–F)\n\n")
 
 cat("RELIABILITY OVERVIEW:\n")
 cat("─────────────────────────────────────────────────────────────\n")
@@ -7700,7 +7757,7 @@ personality <- c(
   "SURPS_Impulsivity", "SURPS_Sensation_Seeking",
   "SURPS_Hopelessness", "SURPS_Anxiety_Sensitivity",
   "DBAS_Consequences", "DBAS_Worry_Helplessness",
-  "DBAS_Expectations", "DBAS_Medications", "DBAS_Total",
+  "DBAS_Expectations", "DBAS_Medications",
   "CISS_Task", "CISS_Emotion", "CISS_Avoidance"
 )
 
@@ -8543,6 +8600,10 @@ cat("✓ Model B fitted\n\n")
 
 #------------------------------------------------------------------------------
 # PART E: POOL COEFFICIENTS (RUBIN'S RULES)
+#
+# mice::pool() requires a mira object. The plain list from fit_models() is
+# converted via mice::as.mira() before pooling. NULL entries (failed
+# imputations) are dropped first so as.mira() receives only valid fits.
 #------------------------------------------------------------------------------
 
 cat("PART E: Pooling coefficients (Rubin's rules)\n")
@@ -8550,14 +8611,20 @@ cat("─────────────────────────
 
 pool_and_summarise <- function(fits_list, model_label) {
 
-  # mice::pool() requires a mira object — build one from the fit list
-  # dropping any failed (NULL) fits first
+  # Drop failed (NULL) fits before converting to mira
   valid_fits <- Filter(Negate(is.null), fits_list)
   if (length(valid_fits) == 0)
     stop(sprintf("%s: all imputations failed — cannot pool.", model_label))
 
-  pooled <- pool(fits_list)
-  smry   <- summary(pooled, conf.int = TRUE) %>%
+  if (length(valid_fits) < length(fits_list))
+    cat(sprintf("  ℹ️  %s: %d failed imputation(s) excluded from pooling\n",
+                model_label, length(fits_list) - length(valid_fits)))
+
+  # Convert to mira object required by mice::pool()
+  mira_obj <- mice::as.mira(valid_fits)
+  pooled   <- pool(mira_obj)
+
+  smry <- summary(pooled, conf.int = TRUE) %>%
     as.data.frame() %>%
     mutate(
       OR       = exp(estimate),
@@ -8967,7 +9034,9 @@ cat("    SE per imputation = |ΔAUC / z| from pROC roc.test()\n")
 cat("    Pooling ΔAUC avoids numerical instability when per-imputation SE^2\n")
 cat("    values are small relative to between-imputation variance of z\n")
 cat("  - AUC CIs are mean bootstrap CIs across imputations (not Rubin-pooled)\n")
-cat("  - Barnard & Rubin (1999) df reported for reference alongside normal p\n\n")
+cat("  - Barnard & Rubin (1999) df reported for reference alongside normal p\n")
+cat("  - mice::as.mira() used to convert fit list to mira object before\n")
+cat("    mice::pool(); NULL (failed) imputations dropped prior to conversion\n\n")
 
 cat("REFERENCES:\n")
 cat("  DeLong et al. (1988). Biometrics, 44:837–845.\n")
@@ -8977,6 +9046,9 @@ cat("  Barnard & Rubin (1999). Biometrika, 86:948–955.\n\n")
 
 cat("✓ Ready for Chunk 13: reporting / visualisation\n\n")
 ```
+
+
+
 
 ## Cross-Validation
 ```{r}

@@ -1,3 +1,3 @@
 "variable","Family","p_val","effect_type","effect_size","ci_low","ci_high","interpretation","p_fdr"
-"capabilityC","Beliefs_COMB",9.01841577991496e-14,"Cohens_d",0.907,0.684,1.13,"Large",7.21473262393197e-13
-"DBAS_Medications","Personality",6.23048949889831e-08,"Cohens_d",-0.731,-0.951,-0.511,"Medium",1.05918321481271e-06
+"capabilityC","Beliefs_COMB",7.53629056664117e-15,"Cohens_d",0.919,0.696,1.143,"Large",6.02903245331293e-14
+"DBAS_Medications","Personality",7.94536602348472e-08,"Cohens_d",-0.726,-0.946,-0.506,"Medium",1.3507122239924e-06
