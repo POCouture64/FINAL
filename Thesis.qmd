@@ -9613,20 +9613,53 @@ cat("✓ Ready for Chunk 14: reporting / visualisation\n\n")
 #   for Model A (Personality, interpretation set) and Model B (Full,
 #   interpretation set).
 #
+# HOW COOK'S D IS CALCULATED:
+#   Cook's distance (Cook, 1977) measures how much all fitted values change
+#   when a single observation is deleted from the model. For logistic
+#   regression, it is approximated as:
+#
+#     D_i = (h_ii / (p * (1 - h_ii)^2)) * r_i^2
+#
+#   where:
+#     h_ii   = leverage of observation i (diagonal of the hat matrix),
+#              reflecting how far i's predictor values are from the centroid
+#     r_i    = Pearson residual for observation i — how far the observed
+#              outcome is from the model's predicted probability
+#     p      = number of parameters (including intercept)
+#
+#   Intuitively: Cook's D is large when an observation has BOTH unusual
+#   predictor values (high leverage) AND a poor fit (large residual).
+#   Either alone is not sufficient — a high-leverage point that is well
+#   predicted has small D; a poorly-predicted point at the centroid of X
+#   also has small D.
+#
+#   Across multiple imputations, Cook's D is computed separately on each
+#   imputed dataset (because the imputed values of missing predictors differ
+#   across datasets, so leverage and residuals will vary slightly). The MEAN
+#   Cook's D across all m imputations is used to flag cases, which is more
+#   stable than a single-imputation estimate. The min-max range across
+#   imputations indicates how consistently a case is influential: a small
+#   range means the case is influential regardless of which imputed values
+#   it received, strengthening the conclusion that its influence is real
+#   rather than a product of a single imputation's values.
+#
+#   Threshold: 4/N (Cook & Weisberg, 1982). Cases whose MEAN Cook's D
+#   exceeds this threshold are flagged as influential.
+#
 # Influential case identification:
-#   Cook's D computed per imputation; mean Cook's D averaged across all 42
+#   Cook's D computed per imputation; mean Cook's D averaged across all
 #   imputations. Cases with mean Cook's D > 4/N flagged as influential.
-#   The same case IDs are removed consistently from all 42 datasets for
+#   The same case IDs are removed consistently from all datasets for
 #   the removal sensitivity analysis.
 #
-# Descriptive profiling (Parts C–F):
-#   Continuous variables: statistics pooled across all 42 imputations.
+# Descriptive profiling (Parts C-F):
+#   Continuous variables: statistics pooled across all imputations.
 #   Factor variables (e.g. stop_wdl_exp_combined): frequency counts and
 #   percentages per level, pooled across imputations. Pooled t-tests
 #   replaced by Fisher's exact test for factors.
 #
 # Scenario classification (Part F):
-#   Data-driven thresholds (pooled across 42 imputations):
+#   Data-driven thresholds (pooled across imputations):
 #   - Continuous: predictor flagged if inf/non-inf top OR bottom quartile
 #     rate ratio >= 1.5 (directional).
 #   - Factor: predictor flagged if ANY level has inf/non-inf prevalence
@@ -9637,17 +9670,40 @@ cat("✓ Ready for Chunk 14: reporting / visualisation\n\n")
 #     <  25% flagged -> Scenario 3 (statistical outliers)
 #
 # Removal sensitivity (Part G):
-#   Model refit on all 42 imputed datasets with influential cases removed.
+#   Model refit on all imputed datasets with influential cases removed.
 #   Coefficients pooled using manual Rubin's rules.
 #   Pooled ORs compared to Chunk 12 pooled ORs.
 #   NOTE: term column cast to character before joining to avoid Factor
 #   mismatch with pool_glm_manual output (which returns character terms).
 #
-# Overlap analysis (Part H):
-#   Cases influential in both models profiled separately.
-#   Cook's D reported per model (mean and range across 42 imputations).
-#   Combined influence score also reported.
-#   Four-group comparison: overlap / A-only / B-only / non-influential.
+# Overlap analysis (Parts H-I):
+#   Three groups of influential cases are distinguished:
+#     - Overlap: cases influential in BOTH Model A and Model B
+#     - A-only:  cases influential in Model A but not Model B
+#     - B-only:  cases influential in Model B but not Model A
+#
+#   Overlap cases are the most analytically important: they exert undue
+#   influence regardless of predictor domain, suggesting their influence
+#   is not domain-specific but reflects something fundamental about those
+#   participants (e.g. extreme outcome values, sparse covariate profiles).
+#
+#   Part H: Standard four-group overlap analysis (Cook's D, outcome rates,
+#           predictor profiles across all four groups).
+#
+#   Part I (new): Overlap-specific deep-dive.
+#     I1. Why do overlap cases appear in both models?
+#         Compares Cook's D between overlap and single-model cases per model.
+#         High D in both models indicates domain-general influence.
+#     I2. What distinguishes A-only from B-only influential cases?
+#         Profiles predictors unique to each model for that model's
+#         single-model influential cases. Tests whether A-only cases are
+#         unusual on personality predictors and B-only cases unusual on
+#         non-personality predictors.
+#     I3. Do overlap cases disproportionately drive non-robust findings?
+#         Refits each model after removing overlap cases only and checks
+#         whether non-robust predictors from Part G lose significance.
+#         If yes, the non-robust finding is anchored to the overlap group
+#         rather than to the full influential set.
 #
 # Robustness classification:
 #   When separation_flag = TRUE AND m_converged = 0, classified as non-robust.
@@ -9656,6 +9712,7 @@ cat("✓ Ready for Chunk 14: reporting / visualisation\n\n")
 #
 # References:
 #   Cook RD (1977). Detection of influential observations. Technometrics.
+#   Cook RD, Weisberg S (1982). Residuals and Influence in Regression.
 #   Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys.
 #==============================================================================
 
@@ -9670,6 +9727,14 @@ cat("═════════════════════════
 cat("CHUNK 14: INFLUENTIAL CASES ANALYSIS\n")
 cat("Model A (Personality) and Model B (Full) — interpretation set\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat("Cook's D measures how much all fitted values change when a single\n")
+cat("observation is deleted. It combines leverage (how unusual the\n")
+cat("predictor values are) with residual size (how poorly the model\n")
+cat("predicts that observation): D_i = (h_ii / (p*(1-h_ii)^2)) * r_i^2.\n")
+cat("Computed per imputation; mean D across all imputations used for\n")
+cat("flagging. Min-max range across imputations indicates stability.\n")
+cat("Threshold: 4/N (Cook & Weisberg, 1982).\n\n")
 
 #------------------------------------------------------------------------------
 # PART A: LOAD DATA AND RESULTS
@@ -9730,7 +9795,11 @@ cat(sprintf("  Factor variables: %s\n\n",
 # HELPER FUNCTIONS
 #------------------------------------------------------------------------------
 
-# ── Cook's D mean and range across imputations ───────────────────────────────
+# ── Cook's D: mean and range across imputations ──────────────────────────────
+# For each imputation, fit the model and extract Cook's D for all N cases.
+# Mean D used for flagging; min/max characterise stability of influence
+# across imputations (small range = consistently influential regardless
+# of which values were imputed for that case).
 get_cooks_stats <- function(imputed_list, formula_obj) {
   m         <- length(imputed_list)
   N         <- nrow(imputed_list[[1]])
@@ -9819,7 +9888,7 @@ pooled_factor_summary <- function(imputed_list, indices, var, label) {
 
   counts_mat <- sapply(levs, function(lv)
     sapply(imputed_list, function(d)
-      sum(d[[var]][indices] == lv, na.rm = TRUE)))   # m x n_levels
+      sum(d[[var]][indices] == lv, na.rm = TRUE)))
 
   mean_counts <- colMeans(counts_mat, na.rm = TRUE)
   mean_pct    <- 100 * mean_counts / n_sub
@@ -9958,11 +10027,19 @@ cat("═════════════════════════
 cat("PART B: Identifying influential cases (mean Cook's D)\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
-cat("Computing Cook's D across 42 imputations for Model A...\n")
+cat("Cook's D computation:\n")
+cat("  D_i = (h_ii / (p * (1-h_ii)^2)) * r_i^2\n")
+cat("  h_ii = leverage (diagonal of hat matrix)\n")
+cat("  r_i  = Pearson residual\n")
+cat("  p    = number of model parameters\n")
+cat("  Fit separately per imputation; mean D used for flagging.\n")
+cat("  Small min-max range = influence is stable across imputed values.\n\n")
+
+cat(sprintf("Computing Cook's D across %d imputations for Model A...\n", m))
 cooks_A   <- get_cooks_stats(imputed_list, formula_A)
 inf_idx_A <- which(cooks_A$mean > threshold)
 
-cat("Computing Cook's D across 42 imputations for Model B...\n")
+cat(sprintf("Computing Cook's D across %d imputations for Model B...\n", m))
 cooks_B   <- get_cooks_stats(imputed_list, formula_B)
 inf_idx_B <- which(cooks_B$mean > threshold)
 
@@ -9982,6 +10059,16 @@ cat(sprintf("\nOverlap (influential in both): %d\n",  length(overlap)))
 cat(sprintf("Influential in Model A only:   %d\n",    length(only_A)))
 cat(sprintf("Influential in Model B only:   %d\n",    length(only_B)))
 cat(sprintf("Non-influential in both:       %d\n\n",  length(noninf_both)))
+
+# Cook's D stability across imputations
+if (length(inf_idx_A) > 0 || length(inf_idx_B) > 0) {
+  all_inf  <- unique(c(inf_idx_A, inf_idx_B))
+  range_A  <- mean(cooks_A$max[all_inf] - cooks_A$min[all_inf], na.rm = TRUE)
+  range_B  <- mean(cooks_B$max[all_inf] - cooks_B$min[all_inf], na.rm = TRUE)
+  cat("Cook's D stability (mean min-max range across imputations):\n")
+  cat(sprintf("  Model A: %.5f  |  Model B: %.5f\n", range_A, range_B))
+  cat("  Small range = influence stable regardless of imputed values.\n\n")
+}
 
 #------------------------------------------------------------------------------
 # DEFINE PER-MODEL ANALYSIS FUNCTION
@@ -10028,7 +10115,7 @@ run_influential_analysis <- function(model_label, formula_obj, model_vars,
               fisher_out$conf.int[2], fisher_out$p.value))
 
   # ── PART D: Pooled predictor distributions ───────────────────────────────
-  cat("PART D: Predictor distributions (pooled across 42 imputations)\n")
+  cat(sprintf("PART D: Predictor distributions (pooled across %d imputations)\n", m))
   cat("───────────────────────────────────────────────────────────────\n\n")
 
   if (length(cont_vars) > 0) {
@@ -10067,8 +10154,8 @@ run_influential_analysis <- function(model_label, formula_obj, model_vars,
   }
 
   # ── PART E: Percentile distributions (continuous only, pooled) ───────────
-  cat("PART E: Percentile distributions — continuous variables\n")
-  cat("(pooled across 42 imputations; factor variables excluded)\n")
+  cat(sprintf("PART E: Percentile distributions — continuous variables\n"))
+  cat(sprintf("(pooled across %d imputations; factor variables excluded)\n", m))
   cat("───────────────────────────────────────────────────────────────\n\n")
 
   for (v in model_vars) {
@@ -10113,7 +10200,7 @@ run_influential_analysis <- function(model_label, formula_obj, model_vars,
   cat(sprintf("Scenario: %s\n\n", scen$scenario))
 
   # ── PART G: Removal sensitivity ──────────────────────────────────────────
-  cat("PART G: Removal sensitivity (pooled across 42 imputations)\n")
+  cat(sprintf("PART G: Removal sensitivity (pooled across %d imputations)\n", m))
   cat("───────────────────────────────────────────────────────────────\n\n")
   cat(sprintf("Removing %d influential cases from all %d imputed datasets...\n\n",
               length(inf_idx), m))
@@ -10215,11 +10302,12 @@ run_influential_analysis <- function(model_label, formula_obj, model_vars,
        inf_idx = inf_idx, threshold = threshold,
        outcome_summary = outcome_summary, fisher_outcome = fisher_out,
        scenario = scen, removal_comparison = removal_comparison,
+       fits_clean = fits_clean,
        n_robust = n_robust, n_nonrobust = n_nonrobust)
 }
 
 #------------------------------------------------------------------------------
-# PARTS C–G: RUN FOR BOTH MODELS
+# PARTS C-G: RUN FOR BOTH MODELS
 #------------------------------------------------------------------------------
 
 results_A <- run_influential_analysis(
@@ -10237,12 +10325,18 @@ results_B <- run_influential_analysis(
   chunk12_summary = chunk12$summaries$model_B)
 
 #------------------------------------------------------------------------------
-# PART H: OVERLAP ANALYSIS
+# PART H: OVERLAP ANALYSIS — FOUR-GROUP COMPARISON
 #------------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("PART H: Overlap analysis — cases influential in both models\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat("Overlap cases are flagged as influential in BOTH Model A and Model B.\n")
+cat("Their influence is not domain-specific — it persists across personality-\n")
+cat("only and full predictor sets — suggesting something fundamental about\n")
+cat("these participants (extreme outcome values, unusual predictor profiles\n")
+cat("spanning both domains).\n\n")
 
 cat(sprintf("Group membership (N=%d):\n", N))
 cat(sprintf("  Influential in both:    %d (%.1f%%)\n", length(overlap),     100*length(overlap)/N))
@@ -10251,7 +10345,7 @@ cat(sprintf("  Influential B only:     %d (%.1f%%)\n", length(only_B),      100*
 cat(sprintf("  Non-influential (both): %d (%.1f%%)\n\n", length(noninf_both), 100*length(noninf_both)/N))
 
 # ── H1: Cook's D for overlap cases ───────────────────────────────────────────
-cat("H1: Cook's D for overlap cases (mean and range across 42 imputations)\n")
+cat("H1: Cook's D for overlap cases (mean and range across imputations)\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
 if (length(overlap) > 0) {
@@ -10268,10 +10362,10 @@ if (length(overlap) > 0) {
 
   print(overlap_cooks, row.names = FALSE)
   cat(sprintf("\nSummary across %d overlap case(s):\n", nrow(overlap_cooks)))
-  cat(sprintf("  Model A: mean=%.5f  (range: %.5f – %.5f)\n",
+  cat(sprintf("  Model A: mean=%.5f  (range: %.5f - %.5f)\n",
               mean(overlap_cooks$CooksD_A_mean),
               min(overlap_cooks$CooksD_A_min), max(overlap_cooks$CooksD_A_max)))
-  cat(sprintf("  Model B: mean=%.5f  (range: %.5f – %.5f)\n",
+  cat(sprintf("  Model B: mean=%.5f  (range: %.5f - %.5f)\n",
               mean(overlap_cooks$CooksD_B_mean),
               min(overlap_cooks$CooksD_B_min), max(overlap_cooks$CooksD_B_max)))
   cat(sprintf("  Combined: %.5f\n\n", mean(overlap_cooks$Combined_mean)))
@@ -10306,15 +10400,15 @@ if (length(unique(group_labels)) >= 2) {
 }
 
 # ── H3: Predictor profiles across groups (pooled) ────────────────────────────
-cat("H3: Predictor profiles across influence groups\n")
-cat("(pooled across 42 imputations)\n")
+cat(sprintf("H3: Predictor profiles across influence groups\n"))
+cat(sprintf("(pooled across %d imputations)\n", m))
 cat("───────────────────────────────────────────────────────────────\n\n")
 
-all_vars     <- union(vars_A, vars_B)
-all_cont     <- all_vars[!sapply(all_vars, function(v) is.factor(imputed_list[[1]][[v]]))]
-all_fac      <- all_vars[sapply(all_vars,  function(v) is.factor(imputed_list[[1]][[v]]))]
+all_pred_vars <- union(vars_A, vars_B)
+all_cont      <- all_pred_vars[!sapply(all_pred_vars, function(v) is.factor(imputed_list[[1]][[v]]))]
+all_fac       <- all_pred_vars[sapply(all_pred_vars,  function(v) is.factor(imputed_list[[1]][[v]]))]
 
-groups_list  <- Filter(function(x) length(x) > 0, list(
+groups_list <- Filter(function(x) length(x) > 0, list(
   "Influential (both)"     = overlap,
   "Influential (A only)"   = only_A,
   "Influential (B only)"   = only_B,
@@ -10372,11 +10466,239 @@ if (length(overlap) > 0 || length(only_A) > 0 || length(only_B) > 0) {
 }
 
 #------------------------------------------------------------------------------
-# PART I: CROSS-MODEL SUMMARY
+# PART I: OVERLAP-SPECIFIC DEEP-DIVE
+#
+# Examines the three groups of influential cases in depth:
+#
+# I1. Domain-generality of overlap influence.
+#     Compares Cook's D of overlap vs single-model influential cases.
+#     If overlap cases have high D in BOTH models, their influence is
+#     domain-general — not explained by either model's specific predictors.
+#     This makes them more concerning than single-model influential cases.
+#
+# I2. What distinguishes A-only from B-only influential cases?
+#     Profiles predictors UNIQUE to each model for that model's own
+#     single-model influential cases, compared to non-influential cases.
+#     Expected pattern: A-only cases unusual on personality predictors;
+#     B-only cases unusual on non-personality predictors.
+#     If the pattern holds, the influence is domain-specific and
+#     interpretable. If not, the influence is unexplained by the model.
+#
+# I3. Do overlap cases drive the non-robust findings?
+#     Refits each model after removing ONLY the overlap cases, then checks
+#     whether the non-robust predictors identified in Part G lose significance.
+#     If a non-robust predictor loses significance after overlap-only removal,
+#     the full-sample finding was anchored to those domain-general cases.
+#     This is a stronger conclusion than general removal sensitivity because
+#     it isolates the overlap group as the specific driver.
 #------------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("PART I: Cross-model summary\n")
+cat("PART I: Overlap-specific deep-dive\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+# ── I1: Domain-generality of overlap influence ───────────────────────────────
+cat("I1: Domain-generality of overlap influence\n")
+cat("───────────────────────────────────────────────────────────────\n")
+cat("If overlap cases have high Cook's D in both models, their influence\n")
+cat("is domain-general — not explained by either model's unique predictors.\n\n")
+
+if (length(overlap) > 0) {
+  d_overlap_A <- mean(cooks_A$mean[overlap], na.rm = TRUE)
+  d_overlap_B <- mean(cooks_B$mean[overlap], na.rm = TRUE)
+  d_onlyA_A   <- if (length(only_A) > 0) mean(cooks_A$mean[only_A], na.rm = TRUE) else NA_real_
+  d_onlyB_B   <- if (length(only_B) > 0) mean(cooks_B$mean[only_B], na.rm = TRUE) else NA_real_
+
+  cat(sprintf("  Overlap cases (n=%d):\n", length(overlap)))
+  cat(sprintf("    Mean Cook's D in Model A: %.5f\n", d_overlap_A))
+  cat(sprintf("    Mean Cook's D in Model B: %.5f\n", d_overlap_B))
+  if (!is.na(d_onlyA_A))
+    cat(sprintf("  A-only cases (n=%d):  Mean Cook's D in Model A: %.5f\n",
+                length(only_A), d_onlyA_A))
+  if (!is.na(d_onlyB_B))
+    cat(sprintf("  B-only cases (n=%d):  Mean Cook's D in Model B: %.5f\n",
+                length(only_B), d_onlyB_B))
+
+  cat("\n  Interpretation:\n")
+  if (d_overlap_A > threshold * 2 && d_overlap_B > threshold * 2) {
+    cat("  Overlap cases substantially exceed the threshold (>2x) in both\n")
+    cat("  models. Their influence is domain-general and not attributable\n")
+    cat("  to either model's specific predictor set.\n\n")
+  } else {
+    cat("  Overlap cases do not clearly exceed double-threshold in both\n")
+    cat("  models. Review Cook's D values and outcome rates in Part H.\n\n")
+  }
+} else {
+  cat("  No overlap cases — I1 not applicable.\n\n")
+}
+
+# ── I2: What distinguishes A-only from B-only cases? ─────────────────────────
+cat("I2: What distinguishes A-only from B-only influential cases?\n")
+cat("───────────────────────────────────────────────────────────────\n")
+cat("Profiles predictors unique to each model for that model's own\n")
+cat("single-model influential cases vs non-influential cases.\n")
+cat("Expected: A-only cases unusual on personality predictors;\n")
+cat("          B-only cases unusual on non-personality predictors.\n\n")
+
+vars_A_only <- setdiff(vars_A, vars_B)   # predictors unique to Model A
+vars_B_only <- setdiff(vars_B, vars_A)   # predictors unique to Model B
+
+if (length(vars_A_only) == 0 && length(vars_B_only) == 0) {
+  cat("  Models share all predictors — no model-specific predictors to compare.\n\n")
+} else {
+
+  if (length(only_A) > 0 && length(vars_A_only) > 0) {
+    cat(sprintf("A-only influential cases (n=%d) on Model A-specific predictors:\n\n",
+                length(only_A)))
+    cont_A_only <- vars_A_only[!sapply(vars_A_only, function(v) is.factor(imputed_list[[1]][[v]]))]
+    fac_A_only  <- vars_A_only[sapply(vars_A_only,  function(v) is.factor(imputed_list[[1]][[v]]))]
+
+    if (length(cont_A_only) > 0) {
+      comp_df <- bind_rows(
+        pooled_predictor_summary(imputed_list, only_A,      cont_A_only, "A-only influential"),
+        pooled_predictor_summary(imputed_list, noninf_both, cont_A_only, "Non-influential")
+      ) %>%
+        mutate(Mean_SD = sprintf("%.2f (%.2f)", Mean, SD)) %>%
+        select(Variable, Group, Mean_SD) %>%
+        pivot_wider(names_from = Group, values_from = Mean_SD)
+      print(comp_df, row.names = FALSE)
+      cat("\n")
+    }
+    for (v in fac_A_only) {
+      cat(sprintf("  Factor: %s\n", v))
+      fac_df <- bind_rows(
+        pooled_factor_summary(imputed_list, only_A,      v, "A-only influential"),
+        pooled_factor_summary(imputed_list, noninf_both, v, "Non-influential")
+      ) %>%
+        mutate(N_Pct = sprintf("%.1f (%.1f%%)", N_level, Pct)) %>%
+        select(Level, Group, N_Pct) %>%
+        pivot_wider(names_from = Group, values_from = N_Pct)
+      print(fac_df, row.names = FALSE)
+      cat("\n")
+    }
+  } else if (length(only_A) == 0) {
+    cat("  No A-only influential cases.\n\n")
+  } else {
+    cat("  No predictors unique to Model A.\n\n")
+  }
+
+  if (length(only_B) > 0 && length(vars_B_only) > 0) {
+    cat(sprintf("B-only influential cases (n=%d) on Model B-specific predictors:\n\n",
+                length(only_B)))
+    cont_B_only <- vars_B_only[!sapply(vars_B_only, function(v) is.factor(imputed_list[[1]][[v]]))]
+    fac_B_only  <- vars_B_only[sapply(vars_B_only,  function(v) is.factor(imputed_list[[1]][[v]]))]
+
+    if (length(cont_B_only) > 0) {
+      comp_df <- bind_rows(
+        pooled_predictor_summary(imputed_list, only_B,      cont_B_only, "B-only influential"),
+        pooled_predictor_summary(imputed_list, noninf_both, cont_B_only, "Non-influential")
+      ) %>%
+        mutate(Mean_SD = sprintf("%.2f (%.2f)", Mean, SD)) %>%
+        select(Variable, Group, Mean_SD) %>%
+        pivot_wider(names_from = Group, values_from = Mean_SD)
+      print(comp_df, row.names = FALSE)
+      cat("\n")
+    }
+    for (v in fac_B_only) {
+      cat(sprintf("  Factor: %s\n", v))
+      fac_df <- bind_rows(
+        pooled_factor_summary(imputed_list, only_B,      v, "B-only influential"),
+        pooled_factor_summary(imputed_list, noninf_both, v, "Non-influential")
+      ) %>%
+        mutate(N_Pct = sprintf("%.1f (%.1f%%)", N_level, Pct)) %>%
+        select(Level, Group, N_Pct) %>%
+        pivot_wider(names_from = Group, values_from = N_Pct)
+      print(fac_df, row.names = FALSE)
+      cat("\n")
+    }
+  } else if (length(only_B) == 0) {
+    cat("  No B-only influential cases.\n\n")
+  } else {
+    cat("  No predictors unique to Model B.\n\n")
+  }
+}
+
+# ── I3: Do overlap cases drive the non-robust findings? ──────────────────────
+cat("I3: Do overlap cases drive the non-robust findings?\n")
+cat("───────────────────────────────────────────────────────────────\n")
+cat("Refits each model after removing ONLY the overlap cases and checks\n")
+cat("whether non-robust predictors from Part G lose significance.\n")
+cat("If yes: the full-sample finding is anchored to these domain-general\n")
+cat("cases, strengthening the non-robustness conclusion.\n\n")
+
+run_overlap_sensitivity <- function(model_label, formula_obj,
+                                    removal_comparison, chunk12_summary,
+                                    overlap_idx) {
+
+  nonrobust_terms <- removal_comparison %>%
+    filter(Robustness %in% c("Non-robust (loses significance)",
+                             "Non-robust (effect collapses after removal)")) %>%
+    pull(term)
+
+  if (length(nonrobust_terms) == 0) {
+    cat(sprintf("  %s: No non-robust predictors — I3 not applicable.\n\n", model_label))
+    return(invisible(NULL))
+  }
+
+  if (length(overlap_idx) == 0) {
+    cat(sprintf("  %s: No overlap cases — cannot run overlap-only removal.\n\n", model_label))
+    return(invisible(NULL))
+  }
+
+  cat(sprintf("  %s — removing overlap cases only (n=%d):\n",
+              model_label, length(overlap_idx)))
+
+  overlap_noninf <- setdiff(seq_len(N), overlap_idx)
+
+  fits_overlap_removed <- lapply(seq_len(m), function(i) {
+    tryCatch(
+      glm(formula_obj,
+          data = imputed_list[[i]][overlap_noninf, , drop = FALSE],
+          family = binomial()),
+      error = function(e) NULL
+    )
+  })
+
+  pooled_overlap <- pool_glm_manual(fits_overlap_removed) %>%
+    filter(term %in% nonrobust_terms) %>%
+    select(term, OR_overlap = OR, OR_CI_overlap = OR_CI,
+           p_overlap = p.value, m_converged)
+
+  pooled_ref <- chunk12_summary %>%
+    filter(term %in% nonrobust_terms) %>%
+    select(term, OR_full = OR, OR_CI_full = OR_CI, p_full = p.value)
+
+  comparison <- full_join(pooled_ref, pooled_overlap, by = "term") %>%
+    mutate(
+      Sig_full    = p_full    < 0.05,
+      Sig_overlap = p_overlap < 0.05,
+      Driven_by_overlap = case_when(
+        m_converged == 0        ~ "Yes — collapses after overlap-only removal",
+        Sig_full & !Sig_overlap ~ "Yes — loses significance after overlap-only removal",
+        TRUE                    ~ "No — persists after overlap-only removal"))
+
+  print(comparison %>%
+          select(term, OR_CI_full, OR_CI_overlap, Driven_by_overlap),
+        row.names = FALSE)
+  cat("\n")
+
+  invisible(comparison)
+}
+
+i3_A <- run_overlap_sensitivity(
+  "Model A", formula_A,
+  results_A$removal_comparison, chunk12$summaries$model_A, overlap)
+
+i3_B <- run_overlap_sensitivity(
+  "Model B", formula_B,
+  results_B$removal_comparison, chunk12$summaries$model_B, overlap)
+
+#------------------------------------------------------------------------------
+# PART J: CROSS-MODEL SUMMARY
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART J: Cross-model summary\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 summary_table <- data.frame(
@@ -10396,14 +10718,16 @@ summary_table <- data.frame(
   stringsAsFactors = FALSE)
 
 print(summary_table, row.names = FALSE)
-cat(sprintf("\nCases influential in both models: %d\n\n", length(overlap)))
+cat(sprintf("\nCases influential in both models: %d\n", length(overlap)))
+cat(sprintf("A-only influential:               %d\n", length(only_A)))
+cat(sprintf("B-only influential:               %d\n\n", length(only_B)))
 
 #------------------------------------------------------------------------------
-# PART J: SAVE RESULTS
+# PART K: SAVE RESULTS
 #------------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("PART J: Saving results\n")
+cat("PART K: Saving results\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 output <- list(
@@ -10412,12 +10736,17 @@ output <- list(
   noninf_both = noninf_both, overlap_cooks = overlap_cooks,
   outcome_by_group = outcome_by_group, summary_table = summary_table,
   cooks_A = cooks_A, cooks_B = cooks_B,
+  i3_A = i3_A, i3_B = i3_B,
   metadata = list(
     outcome = outcome_var, vars_A = vars_A, vars_B = vars_B,
     N = N, m = m, threshold = threshold,
     scenario_note = paste0(
       "Continuous: quartile rate ratio >= 1.5 directional pooled. ",
-      "Factor: any level prevalence ratio >= 1.5 pooled.")))
+      "Factor: any level prevalence ratio >= 1.5 pooled."),
+    cooks_d_note = paste0(
+      "D_i = (h_ii / (p*(1-h_ii)^2)) * r_i^2. ",
+      "Mean D across imputations used for flagging. Threshold = 4/N. ",
+      "Min-max range indicates stability of influence across imputed values.")))
 
 saveRDS(output,                         "influential_cases_results.rds")
 write_csv(summary_table,                "influential_cases_summary.csv")
@@ -10463,7 +10792,9 @@ for (res in list(results_A, results_B)) {
   cat("\n")
 }
 
-cat(sprintf("Overlap (influential in both): %d\n\n", length(overlap)))
+cat(sprintf("Overlap (influential in both): %d\n", length(overlap)))
+cat(sprintf("A-only influential:            %d\n", length(only_A)))
+cat(sprintf("B-only influential:            %d\n\n", length(only_B)))
 
 cat("FILES CREATED:\n")
 cat("  1. influential_cases_results.rds\n")
@@ -10474,68 +10805,129 @@ cat("  5. influential_outcome_by_group.csv\n")
 cat("  6. influential_overlap_cooks.csv  (if overlap cases exist)\n\n")
 
 cat("NOTES:\n")
-cat("  - m = 42 imputations throughout\n")
-cat("  - Cook's D threshold: 4/N = 4/422\n")
+cat(sprintf("  - m = %d imputations throughout\n", m))
+cat(sprintf("  - Cook's D threshold: 4/N = 4/%d\n", N))
+cat("  - Cook's D = (h_ii / (p*(1-h_ii)^2)) * r_i^2\n")
+cat("    h_ii = leverage; r_i = Pearson residual; p = n parameters\n")
+cat("    Averaged across imputations; stable influence = small min-max range\n")
 cat("  - Factor variables: frequency tables in Part D, skipped in\n")
 cat("    Part E, prevalence-ratio classification in Part F\n")
 cat("  - Scenario thresholds: >= 75% flagged = Scenario 1,\n")
 cat("    25-74% = Scenario 2, < 25% = Scenario 3\n")
 cat("  - chunk12 term column cast to character for clean join\n")
-cat("  - Overlap Cook's D: per-model mean + range + combined\n\n")
+cat("  - Part I (new): overlap-specific deep-dive\n")
+cat("    I1: domain-generality (Cook's D comparison across groups)\n")
+cat("    I2: A-only vs B-only on domain-specific predictors\n")
+cat("    I3: overlap-only removal to test if they drive non-robust findings\n\n")
 
 cat("REFERENCES:\n")
 cat("  Cook RD (1977). Detection of influential observations. Technometrics.\n")
+cat("  Cook RD, Weisberg S (1982). Residuals and Influence in Regression.\n")
 cat("  Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys.\n\n")
 
 cat("✓ Ready for Chunk 15\n\n")
 ```
 
 
+
+
 ## Model A Subgroup Check
 ```{r}
 #==============================================================================
-# CHUNK 14b: PREDICTED PROBABILITY DIAGNOSTIC — MODEL A INFLUENTIAL CASES
+# CHUNK 14b: PREDICTED PROBABILITY & INFLUENCE MECHANISM DIAGNOSTIC
+#            MODEL A & MODEL B — INTERPRETATION SET
 #==============================================================================
 # Purpose:
-#   Assess whether the 25 influential cases identified in Chunk 14 represent
-#   a coherent high-risk subgroup (model recognises them as high-risk based on
-#   predictor values alone) or statistical outliers (model failed to predict
-#   their outcome despite 100% discontinuation).
+#   Answer two related questions from Chunk 14:
 #
-#   For each of the 42 imputed datasets, Model A is refit and the predicted
-#   probability of discontinuation is extracted for each influential case.
-#   Predicted probabilities are then averaged across imputations (pooled mean
-#   predicted probability, PMPP). The distribution of PMPPs is summarised and
-#   compared against non-influential cases.
+#   QUESTION 1 — Subgroup or outlier?
+#     Model A influential cases (n=23) had 91.3% discontinuation — far above
+#     the 23.6% base rate — but only Scenario 2 (partial predictor flagging).
+#     This combination is ambiguous: are these cases a genuine high-risk
+#     subgroup whose predictor profile the model recognises as elevated, or
+#     are they statistical ceiling cases whose outcome could not be predicted
+#     from their predictors alone?
 #
-# Interpretation guide:
-#   PMPP median > 0.70 → Model identified influential cases as high-risk;
-#                         influence reflects signal concentration (strong
-#                         Scenario 1 support).
-#   PMPP median 0.40–0.70 → Partial identification; outcomes exceeded
-#                            predictions (moderate Scenario 1 support).
-#   PMPP median < 0.40 → Model failed to predict outcomes; consistent with
-#                         ceiling/outlier interpretation (caution warranted).
+#     Model B influential cases (n=26) had 69.2% discontinuation and Scenario 1
+#     (coherent subgroup, 7/9 predictors flagged). For Model B the subgroup
+#     conclusion is already well-supported; the diagnostic here confirms it.
 #
-# Method:
-#   Predicted probabilities are extracted from fitted Model A (interpretation
-#   set) on each imputed dataset using predict(..., type = "response"). PMPPs
-#   are computed as the row-wise mean across 42 imputations. A Wilcoxon rank-
-#   sum test (non-parametric, appropriate given boundary pileup at PMPP=1.0
-#   for influential cases) compares influential vs non-influential PMPPs.
+#   QUESTION 2 — Separation in stop_wdl_exp_combined levels 3 and 4 (Model B):
+#     Chunk 14 Part G identified stop_wdl_exp_combined levels 3 and 4 as
+#     non-robust (complete collapse after removal, m_converged=0). The SEs
+#     were 882-1455, indicating complete separation. I3 showed these persist
+#     after overlap-only removal, so the overlap cases are not the driver.
+#     This part investigates the root cause (category sparsity) and provides
+#     a principled recommendation for handling these levels in reporting.
+#
+# APPROACH:
+#
+#   Part B: Leverage vs residual decomposition (both models)
+#     Cook's D = (leverage * residual^2) / scaling. Decomposing into its
+#     two components tells us WHY cases are influential:
+#       High leverage + low residual  → unusual predictor profile, well
+#                                        predicted → coherent subgroup
+#       Low leverage  + high residual → typical predictors, unexpected outcome
+#                                        → statistical outlier
+#       High leverage + high residual → both → most problematic
+#     hat values (h_ii) and Pearson residuals extracted per imputation,
+#     averaged across imputations, compared between influential and
+#     non-influential cases via Wilcoxon test.
+#
+#   Part C: Pooled mean predicted probability (PMPP) — Model A focus
+#     PMPP is the row-wise mean predicted probability across all imputations.
+#     For Model A specifically: if influential cases have high PMPP, the model
+#     identified them as high-risk from predictor values alone → subgroup.
+#     If PMPP is low despite 91.3% discontinuation → ceiling/outlier.
+#     Interpretation thresholds:
+#       PMPP median >= 0.70 → model identified as high-risk → strong subgroup
+#       PMPP median 0.40-0.69 → partial identification → moderate support
+#       PMPP median < 0.40 → model did not predict outcomes → outlier concern
+#     Combined with leverage/residual decomposition from Part B, this gives
+#     a complete picture of the influence mechanism.
+#
+#   Part D: Separation analysis — stop_wdl_exp_combined levels 3 and 4
+#     Complete separation means no cases at level 3 or 4 discontinued in
+#     the reduced sample (after influential cases removed). The coefficient
+#     diverges to -infinity with unbounded SE. This is a sparse category
+#     problem, not an outlier problem. Three approaches evaluated:
+#       D1. Cell count verification: how many cases at each level, split
+#           by outcome, in the full vs reduced sample.
+#       D2. Firth penalised regression: bias-reduced logistic regression
+#           (Firth, 1993; Heinze & Schemper, 2002) applied to the full
+#           sample. Produces finite, interpretable ORs for sparse categories
+#           where standard MLE diverges. This is the recommended approach
+#           for reporting these levels.
+#       D3. Collapsed sensitivity: levels 2, 3, 4 (multi-symptom and rare
+#           withdrawal types) collapsed into a single "Complex withdrawal"
+#           category and model refit. Compared to Firth estimates.
+#       Recommendation provided based on D1-D3 results.
 #
 # References:
 #   Cook RD (1977). Detection of influential observations. Technometrics.
+#   Firth D (1993). Bias reduction of maximum likelihood estimates. Biometrika.
+#   Heinze G, Schemper M (2002). A solution to the problem of separation in
+#     logistic regression. Statistics in Medicine, 21:2409-2419.
 #   Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys.
 #==============================================================================
 
 library(tidyverse)
+library(logistf)    # Firth penalised regression
 
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("CHUNK 14b: PREDICTED PROBABILITY DIAGNOSTIC\n")
-cat("Model A influential cases — interpretation set\n")
+cat("CHUNK 14b: INFLUENCE MECHANISM DIAGNOSTIC\n")
+cat("Model A & Model B — interpretation set\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat("PURPOSE:\n")
+cat("  1. Decompose Cook's D into leverage vs residual components to\n")
+cat("     determine whether influential cases are high-risk subgroup\n")
+cat("     members or statistical outliers (both models).\n")
+cat("  2. PMPP diagnostic for Model A specifically: does the model\n")
+cat("     identify influential cases as high-risk from predictors alone?\n")
+cat("  3. Investigate and resolve complete separation in\n")
+cat("     stop_wdl_exp_combined levels 3 and 4 (Model B only).\n\n")
 
 #------------------------------------------------------------------------------
 # PART A: LOAD DATA
@@ -10557,197 +10949,838 @@ chunk12      <- readRDS("regression_comparison_results.rds")
 
 m            <- length(imputed_list)
 N            <- nrow(imputed_list[[1]])
+
+# Model A
 inf_idx_A    <- inf_results$results_A$inf_idx
 noninf_idx_A <- setdiff(seq_len(N), inf_idx_A)
 vars_A       <- inf_results$metadata$vars_A
 outcome_var  <- inf_results$metadata$outcome
-
 formula_A    <- as.formula(paste(outcome_var, "~", paste(vars_A, collapse = " + ")))
+
+# Model B
+inf_idx_B    <- inf_results$results_B$inf_idx
+noninf_idx_B <- setdiff(seq_len(N), inf_idx_B)
+vars_B       <- inf_results$metadata$vars_B
+formula_B    <- as.formula(paste(outcome_var, "~", paste(vars_B, collapse = " + ")))
+
+outcome1     <- imputed_list[[1]][[outcome_var]]
 
 cat(sprintf("✓ Loaded imputed_datasets_complete_final.rds  (m=%d, N=%d)\n", m, N))
 cat(sprintf("✓ Loaded influential_cases_results.rds\n"))
 cat(sprintf("✓ Loaded regression_comparison_results.rds\n\n"))
-cat(sprintf("Model A formula: %s\n", deparse(formula_A)))
-cat(sprintf("Influential cases (Model A): %d\n", length(inf_idx_A)))
-cat(sprintf("Non-influential cases:       %d\n\n", length(noninf_idx_A)))
+
+cat(sprintf("Model A: %d influential cases  |  %d non-influential\n",
+            length(inf_idx_A), length(noninf_idx_A)))
+cat(sprintf("  Outcome rate — Influential: %.1f%%  |  Non-influential: %.1f%%\n",
+            100 * mean(outcome1[inf_idx_A]),
+            100 * mean(outcome1[noninf_idx_A])))
+cat(sprintf("  Scenario 2: partial/heterogeneous profile (3/6 predictors flagged)\n\n"))
+
+cat(sprintf("Model B: %d influential cases  |  %d non-influential\n",
+            length(inf_idx_B), length(noninf_idx_B)))
+cat(sprintf("  Outcome rate — Influential: %.1f%%  |  Non-influential: %.1f%%\n",
+            100 * mean(outcome1[inf_idx_B]),
+            100 * mean(outcome1[noninf_idx_B])))
+cat(sprintf("  Scenario 1: coherent clinical subgroup (7/9 predictors flagged)\n\n"))
 
 #------------------------------------------------------------------------------
-# PART B: COMPUTE PREDICTED PROBABILITIES ACROSS IMPUTATIONS
+# PART B: LEVERAGE VS RESIDUAL DECOMPOSITION — BOTH MODELS
+#
+# Cook's D = (h_ii / (p * (1 - h_ii)^2)) * r_i^2
+# Decomposing into h_ii (leverage) and |r_i| (absolute Pearson residual)
+# separately reveals the mechanism of influence:
+#
+#   High h, low |r|  → unusual predictor profile, well predicted
+#                       → coherent high-risk subgroup
+#   Low  h, high |r| → typical predictor profile, unexpected outcome
+#                       → statistical outlier / ceiling effect
+#   High h, high |r| → both unusual predictors AND mispredicted
+#                       → most influential, hardest to interpret
+#
+# Values averaged across all m imputations for stability.
 #------------------------------------------------------------------------------
 
-cat("PART B: Computing pooled mean predicted probabilities\n")
-cat("───────────────────────────────────────────────────────────────\n\n")
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART B: Leverage vs residual decomposition\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
 
-cat(sprintf("Fitting Model A across %d imputations and extracting\n", m))
-cat("predicted probabilities for all cases...\n\n")
+cat("Cook's D = (leverage * residual^2) / scaling.\n")
+cat("Decomposing reveals WHY cases are influential:\n")
+cat("  High leverage + low  residual  → unusual predictors, well predicted\n")
+cat("                                    → coherent high-risk subgroup\n")
+cat("  Low  leverage + high residual  → typical predictors, unexpected outcome\n")
+cat("                                    → statistical outlier / ceiling effect\n")
+cat("  High leverage + high residual  → both → most influential\n\n")
 
-pred_mat <- matrix(NA_real_, nrow = N, ncol = m)
+decompose_influence <- function(imputed_list, formula_obj, inf_idx, label) {
 
-for (i in seq_len(m)) {
-  fit_i          <- glm(formula_A, data = imputed_list[[i]], family = binomial())
-  pred_mat[, i]  <- predict(fit_i, type = "response")
+  m  <- length(imputed_list)
+  N  <- nrow(imputed_list[[1]])
+
+  hat_mat <- matrix(NA_real_, nrow = N, ncol = m)
+  res_mat <- matrix(NA_real_, nrow = N, ncol = m)
+
+  for (i in seq_len(m)) {
+    fit_i          <- glm(formula_obj, data = imputed_list[[i]], family = binomial())
+    hat_mat[, i]   <- hatvalues(fit_i)
+    res_mat[, i]   <- abs(residuals(fit_i, type = "pearson"))
+  }
+
+  mean_hat <- rowMeans(hat_mat, na.rm = TRUE)
+  mean_res <- rowMeans(res_mat, na.rm = TRUE)
+
+  noninf_idx <- setdiff(seq_len(N), inf_idx)
+
+  # Wilcoxon tests
+  w_hat <- wilcox.test(mean_hat[inf_idx], mean_hat[noninf_idx], exact = FALSE)
+  w_res <- wilcox.test(mean_res[inf_idx], mean_res[noninf_idx], exact = FALSE)
+
+  # Summary table per influential case
+  case_df <- data.frame(
+    Case_ID      = inf_idx,
+    Mean_Leverage = round(mean_hat[inf_idx], 5),
+    Mean_AbsResid = round(mean_res[inf_idx], 4),
+    Outcome       = imputed_list[[1]][[all.vars(formula_obj)[1]]][inf_idx]
+  ) %>% arrange(desc(Mean_Leverage))
+
+  # Classification
+  h_thresh <- median(mean_hat[noninf_idx]) * 2   # 2x non-influential median
+  r_thresh <- median(mean_res[noninf_idx]) * 2
+
+  case_df$Mechanism <- case_when(
+    case_df$Mean_Leverage >= h_thresh & case_df$Mean_AbsResid < r_thresh ~
+      "High leverage / low residual (subgroup)",
+    case_df$Mean_Leverage < h_thresh  & case_df$Mean_AbsResid >= r_thresh ~
+      "Low leverage / high residual (outlier)",
+    case_df$Mean_Leverage >= h_thresh & case_df$Mean_AbsResid >= r_thresh ~
+      "High leverage / high residual (both)",
+    TRUE ~ "Low leverage / low residual (near-threshold)"
+  )
+
+  cat(sprintf("%s\n", label))
+  cat("──────────────────────────────────────────────────────────\n")
+  cat(sprintf("  Non-influential median leverage:       %.5f\n",
+              median(mean_hat[noninf_idx])))
+  cat(sprintf("  Non-influential median |residual|:     %.4f\n",
+              median(mean_res[noninf_idx])))
+  cat(sprintf("  Classification thresholds (2x median):\n"))
+  cat(sprintf("    High leverage threshold:  >= %.5f\n", h_thresh))
+  cat(sprintf("    High residual threshold:  >= %.4f\n\n", r_thresh))
+
+  cat(sprintf("  Influential cases — mean leverage:     %.5f  (p vs non-inf: %.4f)\n",
+              mean(mean_hat[inf_idx]), w_hat$p.value))
+  cat(sprintf("  Influential cases — mean |residual|:   %.4f  (p vs non-inf: %.4f)\n\n",
+              mean(mean_res[inf_idx]), w_res$p.value))
+
+  mech_tab <- table(case_df$Mechanism)
+  cat("  Mechanism classification:\n")
+  for (mech in names(mech_tab))
+    cat(sprintf("    %-45s n = %d\n", mech, mech_tab[mech]))
+  cat("\n")
+
+  cat("  Per-case leverage and residual:\n")
+  print(case_df, row.names = FALSE)
+  cat("\n")
+
+  # Interpretation
+  n_subgroup <- sum(case_df$Mechanism == "High leverage / low residual (subgroup)")
+  n_outlier  <- sum(case_df$Mechanism == "Low leverage / high residual (outlier)")
+  n_both     <- sum(case_df$Mechanism == "High leverage / high residual (both)")
+  n_total    <- nrow(case_df)
+
+  pct_subgroup <- 100 * n_subgroup / n_total
+  pct_outlier  <- 100 * n_outlier  / n_total
+  pct_both     <- 100 * n_both     / n_total
+
+  cat("  INTERPRETATION:\n")
+  if (pct_subgroup >= 50) {
+    cat(sprintf("  Majority (%.0f%%) of influential cases show high leverage / low\n",
+                pct_subgroup))
+    cat("  residual. The model identified their predictor profiles as unusual\n")
+    cat("  and predicted their outcomes reasonably well. Influence reflects\n")
+    cat("  genuine signal concentration in a high-risk predictor region.\n")
+    cat("  This supports a coherent subgroup interpretation.\n\n")
+  } else if (pct_outlier >= 50) {
+    cat(sprintf("  Majority (%.0f%%) of influential cases show low leverage / high\n",
+                pct_outlier))
+    cat("  residual. Their predictor profiles are not unusual, but their\n")
+    cat("  outcomes were not predicted by the model. This is consistent with\n")
+    cat("  a ceiling effect or statistical outlier pattern.\n\n")
+  } else if (pct_both >= 30) {
+    cat(sprintf("  %.0f%% of influential cases show both high leverage and high\n",
+                pct_both))
+    cat("  residual — these are the most difficult to classify. Their predictor\n")
+    cat("  profiles are unusual AND their outcomes are not fully predicted.\n\n")
+  } else {
+    cat("  Mixed mechanism — no single pattern dominates. Review per-case\n")
+    cat("  leverage and residual values above to characterise individual cases.\n\n")
+  }
+
+  invisible(list(
+    mean_hat   = mean_hat,
+    mean_res   = mean_res,
+    case_df    = case_df,
+    w_hat      = w_hat,
+    w_res      = w_res,
+    h_thresh   = h_thresh,
+    r_thresh   = r_thresh
+  ))
 }
 
-# Pooled mean predicted probability (PMPP) per case
-pmpp <- rowMeans(pred_mat, na.rm = TRUE)
-
-cat("✓ Predicted probabilities computed across all imputations.\n\n")
+decomp_A <- decompose_influence(imputed_list, formula_A, inf_idx_A,
+                                 "MODEL A — Personality (n=23 influential)")
+decomp_B <- decompose_influence(imputed_list, formula_B, inf_idx_B,
+                                 "MODEL B — Full (n=26 influential)")
 
 #------------------------------------------------------------------------------
-# PART C: SUMMARISE PMPP — INFLUENTIAL CASES
+# PART C: POOLED MEAN PREDICTED PROBABILITY (PMPP) — MODEL A FOCUS
+#
+# PMPP is most informative for Model A because the subgroup vs outlier
+# question is genuinely open there (Scenario 2, 91.3% discontinuation).
+# For Model B the Scenario 1 classification and leverage decomposition
+# already establish coherence; PMPP is reported for completeness.
+#
+# Key question for Model A:
+#   Did the model assign high predicted probabilities to influential cases
+#   based on their PREDICTOR VALUES ALONE?
+#   - Yes (PMPP > 0.70) → subgroup the model recognises as high-risk
+#   - No  (PMPP < 0.40) → model could not predict their outcomes from
+#     predictors → more consistent with ceiling/outlier interpretation
+#
+# PMPP is derived independently of outcome — it reflects what the model
+# would predict given predictor values, whether or not that prediction
+# matches the observed discontinuation.
 #------------------------------------------------------------------------------
 
-cat("PART C: PMPP distribution — influential cases\n")
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART C: Pooled mean predicted probability (PMPP)\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat("PMPP = row-wise mean predicted probability across all imputations.\n")
+cat("Reflects what the model predicts from predictor values alone.\n")
+cat("Model A is the primary focus (subgroup vs outlier ambiguous from\n")
+cat("Chunk 14 Scenario 2 + 91.3% discontinuation).\n\n")
+cat("Thresholds:\n")
+cat("  PMPP >= 0.70 → model identified as high-risk → supports subgroup\n")
+cat("  PMPP 0.40-0.69 → partial identification → moderate support\n")
+cat("  PMPP < 0.40  → model did not predict outcomes → outlier concern\n\n")
+
+compute_pmpp <- function(imputed_list, formula_obj, inf_idx, label) {
+
+  m <- length(imputed_list)
+  N <- nrow(imputed_list[[1]])
+
+  pred_mat <- matrix(NA_real_, nrow = N, ncol = m)
+  for (i in seq_len(m)) {
+    fit_i         <- glm(formula_obj, data = imputed_list[[i]], family = binomial())
+    pred_mat[, i] <- predict(fit_i, type = "response")
+  }
+
+  pmpp        <- rowMeans(pred_mat, na.rm = TRUE)
+  noninf_idx  <- setdiff(seq_len(N), inf_idx)
+  pmpp_inf    <- pmpp[inf_idx]
+  pmpp_noninf <- pmpp[noninf_idx]
+  outcome1    <- imputed_list[[1]][[all.vars(formula_obj)[1]]]
+
+  wtest <- wilcox.test(pmpp_inf, pmpp_noninf, exact = FALSE)
+
+  pmpp_table <- data.frame(
+    Case_ID   = inf_idx,
+    Outcome   = outcome1[inf_idx],
+    PMPP_mean = round(pmpp[inf_idx], 3),
+    PMPP_min  = round(apply(pred_mat[inf_idx, , drop = FALSE], 1,
+                             min, na.rm = TRUE), 3),
+    PMPP_max  = round(apply(pred_mat[inf_idx, , drop = FALSE], 1,
+                             max, na.rm = TRUE), 3)
+  ) %>% arrange(desc(PMPP_mean))
+
+  cat(sprintf("%s\n", label))
+  cat("──────────────────────────────────────────────────────────\n")
+  cat(sprintf("  Influential (n=%d):\n", length(inf_idx)))
+  cat(sprintf("    Mean PMPP:   %.3f\n",   mean(pmpp_inf)))
+  cat(sprintf("    Median PMPP: %.3f\n",   median(pmpp_inf)))
+  cat(sprintf("    IQR:         %.3f – %.3f\n",
+              quantile(pmpp_inf, 0.25), quantile(pmpp_inf, 0.75)))
+  cat(sprintf("    Range:       %.3f – %.3f\n\n", min(pmpp_inf), max(pmpp_inf)))
+
+  thresholds <- c(0.30, 0.50, 0.70, 0.90)
+  cat("  Cases above PMPP thresholds:\n")
+  for (thr in thresholds) {
+    n_ab <- sum(pmpp_inf >= thr)
+    cat(sprintf("    >= %.2f: %d / %d (%.1f%%)\n",
+                thr, n_ab, length(pmpp_inf), 100 * n_ab / length(pmpp_inf)))
+  }
+  cat("\n")
+
+  cat(sprintf("  Non-influential (n=%d):\n", length(noninf_idx)))
+  cat(sprintf("    Median PMPP: %.3f\n\n", median(pmpp_noninf)))
+
+  cat(sprintf("  Wilcoxon rank-sum: W = %.1f, p = %.4f\n\n",
+              wtest$statistic, wtest$p.value))
+
+  cat("  Per-case PMPP:\n")
+  print(pmpp_table, row.names = FALSE)
+  cat("\n")
+
+  med_pmpp <- median(pmpp_inf)
+  cat("  INTERPRETATION:\n")
+  if (med_pmpp >= 0.70) {
+    cat(sprintf("  Median PMPP = %.3f. The model assigned high predicted\n",
+                med_pmpp))
+    cat("  probabilities from predictor values alone. Influential cases\n")
+    cat("  are recognised as high-risk by the model. Combined with the\n")
+    cat("  leverage decomposition, this strongly supports a coherent\n")
+    cat("  high-risk subgroup interpretation.\n\n")
+  } else if (med_pmpp >= 0.40) {
+    cat(sprintf("  Median PMPP = %.3f. The model partially identified\n",
+                med_pmpp))
+    cat("  influential cases as elevated risk, but their outcomes exceeded\n")
+    cat("  model predictions. Subgroup interpretation is plausible but\n")
+    cat("  predictor profiles alone do not fully explain their influence.\n\n")
+  } else {
+    cat(sprintf("  Median PMPP = %.3f. The model did not identify\n",
+                med_pmpp))
+    cat("  influential cases as high-risk despite their high discontinuation\n")
+    cat("  rate. Influence is driven by residuals (misprediction) more than\n")
+    cat("  leverage (unusual predictors). Consistent with ceiling effect or\n")
+    cat("  statistical outlier pattern. Report findings cautiously.\n\n")
+  }
+
+  invisible(list(pmpp = pmpp, pmpp_inf = pmpp_inf,
+                 pmpp_noninf = pmpp_noninf,
+                 pmpp_table = pmpp_table,
+                 wtest = wtest,
+                 median_inf = med_pmpp,
+                 median_noninf = median(pmpp_noninf)))
+}
+
+pmpp_A <- compute_pmpp(imputed_list, formula_A, inf_idx_A,
+                        "MODEL A — Personality (primary focus)")
+pmpp_B <- compute_pmpp(imputed_list, formula_B, inf_idx_B,
+                        "MODEL B — Full (reference)")
+
+#------------------------------------------------------------------------------
+# PART D: SEPARATION ANALYSIS — stop_wdl_exp_combined LEVELS 3 AND 4
+#
+# BACKGROUND:
+#   Chunk 14 Part G found complete separation for stop_wdl_exp_combined
+#   levels 3 ("Other MH symptoms only") and 4 ("Physical symptoms only")
+#   after removing influential cases. Specifically:
+#     Level 3: estimates in only 2/23 imputations (SEs = 882)
+#     Level 4: estimates in only 4/23 imputations (SEs = 882-1455)
+#
+#   Chunk 14 Part I3 showed this persists after overlap-only removal,
+#   ruling out the 9 overlap cases as the driver. The root cause is
+#   category sparsity: levels 3 and 4 are extremely rare in the full
+#   sample, and after removing 26 influential cases, no continuers
+#   remain in these cells, causing the likelihood to be maximised at
+#   the boundary (coefficient → -infinity).
+#
+#   This is NOT an influential case problem. It is a structural data
+#   sparsity problem that would exist with or without the sensitivity
+#   analysis. The Chunk 12 full-sample ORs for these levels (2.34 and
+#   1.29) are also unreliable — the full-sample SEs are already large
+#   ([0.07, 77.91] and [0.08, 20.38]) indicating near-separation even
+#   in the full sample.
+#
+# APPROACH:
+#   D1. Cell count verification — document exactly how many cases are
+#       at each level split by outcome in the full sample and reduced
+#       sample. This establishes the sparsity diagnosis concretely.
+#   D2. Firth penalised logistic regression — fit the full Model B
+#       using Firth's bias-reduced estimator (logistf package) across
+#       all imputations, pool using Rubin's rules. Firth regression
+#       adds a penalty to the log-likelihood that prevents estimates
+#       from diverging when cells are sparse or empty, producing
+#       finite, interpretable ORs with valid standard errors.
+#       This is the recommended approach for reporting these levels.
+#   D3. Collapsed sensitivity — collapse levels 2, 3, 4 into a single
+#       "Complex withdrawal" category (anxiety only, other MH symptoms
+#       only, physical symptoms only — all involve multiple or unusual
+#       symptom types). Refit standard logistic regression and compare
+#       to Firth estimates. If the collapsed coefficient is similar to
+#       the Firth estimate for the collapsed group, this validates both
+#       approaches and provides a simpler reported model.
+#   D4. Recommendation — which approach to use in the manuscript.
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART D: Separation analysis\n")
+cat("stop_wdl_exp_combined levels 3 and 4 — Model B\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat("BACKGROUND:\n")
+cat("  Chunk 14 Part G identified complete separation for\n")
+cat("  stop_wdl_exp_combined levels 3 and 4 after removing influential\n")
+cat("  cases (m_converged = 0; SEs = 882-1455). Chunk 14 Part I3\n")
+cat("  confirmed this persists after overlap-only removal, ruling out\n")
+cat("  the 9 overlap cases as the driver.\n\n")
+cat("  ROOT CAUSE: Category sparsity, not influential cases.\n")
+cat("  Levels 3 ('Other MH symptoms only') and 4 ('Physical symptoms\n")
+cat("  only') are extremely rare. After removing 26 influential cases,\n")
+cat("  no continuers remain in these cells — the MLE diverges to\n")
+cat("  -infinity. The wide CIs in the FULL sample model ([0.07, 77.91]\n")
+cat("  and [0.08, 20.38]) already signal near-separation even before\n")
+cat("  any removal. This is a structural data problem.\n\n")
+cat("  This is NOT an influential case problem. It requires a separate\n")
+cat("  analytical solution regardless of the sensitivity analysis.\n\n")
+
+# ── D1: Cell count verification ──────────────────────────────────────────────
+cat("D1: Cell count verification\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
-pmpp_inf    <- pmpp[inf_idx_A]
-pmpp_noninf <- pmpp[noninf_idx_A]
+cat("Full sample (N=422) — counts by stop_wdl_exp_combined level × outcome:\n\n")
 
-cat("Influential cases (N=", length(inf_idx_A), "):\n", sep = "")
-cat(sprintf("  Mean PMPP:    %.3f\n",   mean(pmpp_inf)))
-cat(sprintf("  Median PMPP:  %.3f\n",   median(pmpp_inf)))
-cat(sprintf("  SD:           %.3f\n",   sd(pmpp_inf)))
-cat(sprintf("  IQR:          %.3f – %.3f\n",
-            quantile(pmpp_inf, 0.25), quantile(pmpp_inf, 0.75)))
-cat(sprintf("  Range:        %.3f – %.3f\n\n", min(pmpp_inf), max(pmpp_inf)))
+wdl_var <- "stop_wdl_exp_combined"
 
-# Threshold counts
-thresholds <- c(0.30, 0.50, 0.70, 0.90)
-cat("  Cases above PMPP thresholds:\n")
-for (thr in thresholds) {
-  n_above <- sum(pmpp_inf >= thr)
-  cat(sprintf("    >= %.2f: %d / %d (%.1f%%)\n",
-              thr, n_above, length(pmpp_inf), 100 * n_above / length(pmpp_inf)))
+# Use imputation 1 as representative (stop_wdl_exp_combined was imputed
+# with polr so values vary slightly across imputations — use mean counts)
+level_labels <- c("0=No withdrawal", "1=Insomnia only", "2=Anxiety only",
+                  "3=Other MH symptoms only", "4=Physical symptoms only",
+                  "5=Multiple symptoms")
+
+cell_df_list <- lapply(seq_len(m), function(i) {
+  d <- imputed_list[[i]]
+  data.frame(
+    level   = as.character(d[[wdl_var]]),
+    outcome = d[[outcome_var]]
+  ) %>%
+    group_by(level, outcome) %>%
+    summarise(n = n(), .groups = "drop")
+})
+
+# Pool: mean counts across imputations
+cell_pooled <- bind_rows(cell_df_list) %>%
+  group_by(level, outcome) %>%
+  summarise(mean_n = round(mean(n), 1), .groups = "drop") %>%
+  pivot_wider(names_from = outcome, values_from = mean_n,
+              names_prefix = "outcome_") %>%
+  rename(Continuers = outcome_0, Stoppers = outcome_1) %>%
+  mutate(
+    Total    = Continuers + Stoppers,
+    Pct_Stop = round(100 * Stoppers / Total, 1)
+  ) %>%
+  arrange(level)
+
+cat("  Level                    Continuers  Stoppers  Total  %Stopped\n")
+cat("  ─────────────────────────────────────────────────────────────\n")
+for (i in seq_len(nrow(cell_pooled))) {
+  lv    <- cell_pooled$level[i]
+  lbl   <- level_labels[as.integer(lv) + 1]
+  cat(sprintf("  %-28s  %8.1f  %7.1f  %5.1f  %6.1f%%\n",
+              lbl,
+              cell_pooled$Continuers[i],
+              cell_pooled$Stoppers[i],
+              cell_pooled$Total[i],
+              cell_pooled$Pct_Stop[i]))
 }
 cat("\n")
 
-#------------------------------------------------------------------------------
-# PART D: COMPARE INFLUENTIAL VS NON-INFLUENTIAL PMPPS
-#------------------------------------------------------------------------------
+# Reduced sample counts (after removing all 26 influential cases)
+cat("Reduced sample (N=396, after removing all 26 influential cases):\n\n")
 
-cat("PART D: PMPP comparison — influential vs non-influential\n")
-cat("───────────────────────────────────────────────────────────────\n\n")
+cell_df_reduced <- lapply(seq_len(m), function(i) {
+  d <- imputed_list[[i]][noninf_idx_B, , drop = FALSE]
+  data.frame(
+    level   = as.character(d[[wdl_var]]),
+    outcome = d[[outcome_var]]
+  ) %>%
+    group_by(level, outcome) %>%
+    summarise(n = n(), .groups = "drop")
+})
 
-cat("Non-influential cases (N=", length(noninf_idx_A), "):\n", sep = "")
-cat(sprintf("  Mean PMPP:    %.3f\n",   mean(pmpp_noninf)))
-cat(sprintf("  Median PMPP:  %.3f\n",   median(pmpp_noninf)))
-cat(sprintf("  SD:           %.3f\n",   sd(pmpp_noninf)))
-cat(sprintf("  IQR:          %.3f – %.3f\n\n",
-            quantile(pmpp_noninf, 0.25), quantile(pmpp_noninf, 0.75)))
+cell_reduced <- bind_rows(cell_df_reduced) %>%
+  group_by(level, outcome) %>%
+  summarise(mean_n = round(mean(n), 1), .groups = "drop") %>%
+  pivot_wider(names_from = outcome, values_from = mean_n,
+              names_prefix = "outcome_") %>%
+  rename(Continuers = outcome_0, Stoppers = outcome_1) %>%
+  mutate(
+    Continuers = replace_na(Continuers, 0),
+    Stoppers   = replace_na(Stoppers,   0),
+    Total      = Continuers + Stoppers,
+    Pct_Stop   = round(100 * Stoppers / Total, 1),
+    Separation = ifelse(Continuers == 0 | Stoppers == 0, "⚠️  SEPARATION", "OK")
+  ) %>%
+  arrange(level)
 
-# Wilcoxon rank-sum (non-parametric: PMPP of inf cases likely piled near 1.0)
-wtest <- wilcox.test(pmpp_inf, pmpp_noninf, exact = FALSE)
-cat(sprintf("Wilcoxon rank-sum test: W = %.1f, p = %.4f\n\n",
-            wtest$statistic, wtest$p.value))
-
-#------------------------------------------------------------------------------
-# PART E: PER-CASE PMPP TABLE FOR INFLUENTIAL CASES
-#------------------------------------------------------------------------------
-
-cat("PART E: Per-case PMPP — influential cases\n")
-cat("───────────────────────────────────────────────────────────────\n\n")
-
-outcome1 <- imputed_list[[1]][[outcome_var]]
-
-pmpp_table <- data.frame(
-  Case_ID    = inf_idx_A,
-  Outcome    = outcome1[inf_idx_A],
-  PMPP_mean  = round(pmpp[inf_idx_A], 3),
-  PMPP_min   = round(apply(pred_mat[inf_idx_A, , drop = FALSE], 1, min,  na.rm = TRUE), 3),
-  PMPP_max   = round(apply(pred_mat[inf_idx_A, , drop = FALSE], 1, max,  na.rm = TRUE), 3),
-  CooksD_A   = round(inf_results$cooks_A$mean[inf_idx_A], 5)
-) %>%
-  arrange(desc(PMPP_mean))
-
-print(pmpp_table, row.names = FALSE)
+cat("  Level                    Continuers  Stoppers  Total  %Stopped  Status\n")
+cat("  ─────────────────────────────────────────────────────────────────────\n")
+for (i in seq_len(nrow(cell_reduced))) {
+  lv  <- cell_reduced$level[i]
+  lbl <- level_labels[as.integer(lv) + 1]
+  cat(sprintf("  %-28s  %8.1f  %7.1f  %5.1f  %6.1f%%  %s\n",
+              lbl,
+              cell_reduced$Continuers[i],
+              cell_reduced$Stoppers[i],
+              cell_reduced$Total[i],
+              cell_reduced$Pct_Stop[i],
+              cell_reduced$Separation[i]))
+}
 cat("\n")
 
-#------------------------------------------------------------------------------
-# PART F: INTERPRETATION
-#------------------------------------------------------------------------------
+cat("DIAGNOSIS:\n")
+cat("  Levels 3 and 4 have near-zero or zero continuers even in the FULL\n")
+cat("  sample. Removal of 26 influential cases eliminates the remaining\n")
+cat("  continuers entirely, causing complete separation. The full-sample\n")
+cat("  ORs and their wide CIs ([0.07, 77.91] and [0.08, 20.38]) already\n")
+cat("  reflect near-separation in the standard MLE model. Standard\n")
+cat("  logistic regression cannot produce reliable estimates for these\n")
+cat("  levels regardless of whether influential cases are present.\n\n")
 
-cat("PART F: Interpretation\n")
+# ── D2: Firth penalised logistic regression ───────────────────────────────────
+cat("D2: Firth penalised logistic regression — full sample\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
-med_pmpp <- median(pmpp_inf)
+cat("METHOD: Firth (1993) bias-reduced logistic regression.\n")
+cat("  Adds a penalty term proportional to the log of the Fisher\n")
+cat("  information determinant to the log-likelihood. This shrinks\n")
+cat("  estimates away from ±infinity when cells are sparse or empty,\n")
+cat("  producing finite coefficients and valid standard errors.\n")
+cat("  Recommended by Heinze & Schemper (2002) specifically for\n")
+cat("  sparse categories in logistic regression.\n\n")
+cat("  Applied to the full Model B formula across all imputations;\n")
+cat("  results pooled using Rubin's rules.\n\n")
 
-interp <- case_when(
-  med_pmpp >= 0.70 ~
-    paste0("STRONG SUBGROUP SUPPORT: Median PMPP = ", round(med_pmpp, 3),
-           ". The model assigned high predicted probabilities to influential\n",
-           "cases based on their predictor values alone. Influence on coefficients\n",
-           "reflects genuine signal concentration in a high-risk subgroup,\n",
-           "not outlier distortion. Scenario 1 classification is well supported."),
-  med_pmpp >= 0.40 ~
-    paste0("MODERATE SUBGROUP SUPPORT: Median PMPP = ", round(med_pmpp, 3),
-           ". The model partially identified influential cases as elevated risk,\n",
-           "but their outcomes exceeded model predictions. Scenario 1 is plausible\n",
-           "but the predictor profile alone does not fully explain their influence.\n",
-           "Interpret with some caution."),
-  TRUE ~
-    paste0("OUTLIER / CEILING CONCERN: Median PMPP = ", round(med_pmpp, 3),
-           ". The model did not identify influential cases as high-risk based on\n",
-           "predictor values. Their 100% discontinuation rate is not predicted by\n",
-           "the model. This is consistent with a ceiling effect or statistical\n",
-           "outlier pattern rather than a coherent clinical subgroup. Scenario 1\n",
-           "classification should be stated cautiously in the writeup.")
-)
+cat(sprintf("Fitting Firth model across %d imputations...\n\n", m))
 
-cat(interp, "\n\n")
+firth_fits <- lapply(seq_len(m), function(i) {
+  tryCatch(
+    logistf::logistf(formula_B, data = imputed_list[[i]],
+                     firth = TRUE, pl = FALSE),
+    error = function(e) {
+      cat(sprintf("  Imputation %d failed: %s\n", i, e$message))
+      NULL
+    }
+  )
+})
 
-# Suggested writeup sentence
-cat("Suggested 1–2 sentence writeup:\n")
-cat("───────────────────────────────────────────────────────────────\n")
-cat(sprintf(
-  "\"To assess whether influential cases represented a coherent high-risk\n",
-  "subgroup or statistical outliers, we examined their pooled mean predicted\n",
-  "probability (PMPP) of discontinuation from Model A. The median PMPP among\n",
-  "influential cases was %.2f (IQR: %.2f–%.2f), %s non-influential cases\n",
-  "(median PMPP = %.2f; Wilcoxon W = %.1f, p = %.3f), indicating that the\n",
-  "model %s these individuals as elevated risk based on predictor values alone.\"\n",
+n_firth_ok <- sum(!sapply(firth_fits, is.null))
+cat(sprintf("✓ Firth models fitted: %d / %d\n\n", n_firth_ok, m))
 
-  median(pmpp_inf),
-  quantile(pmpp_inf, 0.25),
-  quantile(pmpp_inf, 0.75),
-  ifelse(median(pmpp_inf) > median(pmpp_noninf), "substantially higher than", "comparable to"),
-  median(pmpp_noninf),
-  wtest$statistic,
-  wtest$p.value,
-  ifelse(med_pmpp >= 0.70, "clearly identified",
-         ifelse(med_pmpp >= 0.40, "partially identified", "did not identify"))
-))
+# Pool Firth estimates using Rubin's rules (manual, same as pool_glm_manual)
+pool_firth <- function(firth_fits) {
+  valid <- Filter(Negate(is.null), firth_fits)
+  m_v   <- length(valid)
 
-#------------------------------------------------------------------------------
-# PART G: SAVE RESULTS
-#------------------------------------------------------------------------------
+  coef_list <- lapply(valid, function(f) {
+    data.frame(
+      term     = names(coef(f)),
+      estimate = as.numeric(coef(f)),
+      se       = sqrt(diag(vcov(f))),
+      stringsAsFactors = FALSE
+    )
+  })
 
+  all_terms <- unique(unlist(lapply(coef_list, `[[`, "term")))
+
+  bind_rows(lapply(all_terms, function(trm) {
+
+    ests <- sapply(coef_list, function(d) {
+      idx <- match(trm, d$term)
+      if (is.na(idx)) NA_real_ else d$estimate[idx]
+    })
+    ses <- sapply(coef_list, function(d) {
+      idx <- match(trm, d$term)
+      if (is.na(idx)) NA_real_ else d$se[idx]
+    })
+
+    valid_mask <- !is.na(ests) & is.finite(ests) & is.finite(ses)
+    m_use      <- sum(valid_mask)
+    if (m_use < 2)
+      return(data.frame(term = trm, estimate = NA_real_, se_rubin = NA_real_,
+                        OR = NA_real_, OR_lower = NA_real_, OR_upper = NA_real_,
+                        OR_CI = "NA", p.value = NA_real_,
+                        stringsAsFactors = FALSE))
+
+    Q_bar <- mean(ests[valid_mask])
+    U_bar <- mean(ses[valid_mask]^2)
+    B     <- var(ests[valid_mask])
+    T_var <- U_bar + (1 + 1 / m_use) * B
+    se_r  <- sqrt(T_var)
+    z     <- Q_bar / se_r
+    p_val <- 2 * pnorm(-abs(z))
+    or    <- exp(Q_bar)
+    lo    <- exp(Q_bar - 1.96 * se_r)
+    hi    <- exp(Q_bar + 1.96 * se_r)
+
+    data.frame(
+      term     = trm,
+      estimate = round(Q_bar, 4),
+      se_rubin = round(se_r,  4),
+      OR       = round(or, 3),
+      OR_lower = round(lo, 3),
+      OR_upper = round(hi, 3),
+      OR_CI    = sprintf("%.2f [%.2f, %.2f]", or, lo, hi),
+      p.value  = round(p_val, 4),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+firth_pooled <- pool_firth(firth_fits)
+
+cat("Firth pooled results — full Model B:\n\n")
+print(firth_pooled %>%
+        filter(term != "(Intercept)") %>%
+        select(term, OR_CI, p.value),
+      row.names = FALSE)
 cat("\n")
-cat("PART G: Saving results\n")
+
+# Highlight the key levels
+cat("Key levels — standard MLE vs Firth comparison:\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
-pmpp_results <- list(
-  pmpp_all         = pmpp,
-  pmpp_inf         = pmpp_inf,
-  pmpp_noninf      = pmpp_noninf,
-  pmpp_table       = pmpp_table,
-  wilcox_test      = wtest,
-  median_pmpp_inf  = median(pmpp_inf),
-  median_pmpp_ni   = median(pmpp_noninf),
-  interpretation   = interp,
-  metadata         = list(
-    outcome  = outcome_var,
-    vars_A   = vars_A,
-    inf_idx  = inf_idx_A,
-    N        = N,
-    m        = m
+mle_summary <- chunk12$summaries$model_B %>%
+  filter(grepl("stop_wdl_exp_combined", term)) %>%
+  select(term, OR_CI_mle = OR_CI, p_mle = p.value)
+
+firth_summary <- firth_pooled %>%
+  filter(grepl("stop_wdl_exp_combined", term)) %>%
+  select(term, OR_CI_firth = OR_CI, p_firth = p.value)
+
+comparison_mle_firth <- full_join(mle_summary, firth_summary, by = "term")
+
+cat("  term                      MLE OR [95% CI]       Firth OR [95% CI]     p (Firth)\n")
+cat("  ─────────────────────────────────────────────────────────────────────────────\n")
+for (i in seq_len(nrow(comparison_mle_firth))) {
+  cat(sprintf("  %-26s  %-22s  %-22s  %.4f\n",
+              comparison_mle_firth$term[i],
+              comparison_mle_firth$OR_CI_mle[i],
+              comparison_mle_firth$OR_CI_firth[i],
+              comparison_mle_firth$p_firth[i]))
+}
+cat("\n")
+cat("  NOTE: Firth ORs for levels 3 and 4 will be finite and interpretable\n")
+cat("  even when MLE diverges, because the penalty prevents estimates from\n")
+cat("  reaching ±infinity. Narrower CIs than MLE for sparse levels.\n\n")
+
+# ── D3: Collapsed sensitivity ─────────────────────────────────────────────────
+cat("D3: Collapsed category sensitivity\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+cat("RATIONALE: Levels 2 (Anxiety only), 3 (Other MH symptoms only),\n")
+cat("and 4 (Physical symptoms only) share a conceptual feature —\n")
+cat("they all represent single-domain withdrawal symptoms other than\n")
+cat("insomnia. Collapsing them into 'Complex/atypical withdrawal'\n")
+cat("pools cell counts, resolving separation while preserving the\n")
+cat("clinically meaningful distinction from levels 0 (none),\n")
+cat("1 (insomnia only), and 5 (multiple symptoms).\n\n")
+
+cat("Collapsed coding:\n")
+cat("  0 → 'No withdrawal'\n")
+cat("  1 → 'Insomnia only'\n")
+cat("  2, 3, 4 → 'Atypical withdrawal (single non-insomnia domain)'\n")
+cat("  5 → 'Multiple symptoms'\n\n")
+
+# Create collapsed version in each imputed dataset
+collapse_wdl <- function(d, var) {
+  d[[paste0(var, "_collapsed")]] <- dplyr::case_when(
+    d[[var]] == "0" ~ "0_None",
+    d[[var]] == "1" ~ "1_Insomnia_only",
+    d[[var]] %in% c("2", "3", "4") ~ "2_Atypical",
+    d[[var]] == "5" ~ "3_Multiple",
+    TRUE ~ NA_character_
+  )
+  d[[paste0(var, "_collapsed")]] <- factor(
+    d[[paste0(var, "_collapsed")]],
+    levels = c("0_None", "1_Insomnia_only", "2_Atypical", "3_Multiple"))
+  d
+}
+
+# Replace stop_wdl_exp_combined with collapsed version in formula
+vars_B_collapsed <- gsub("stop_wdl_exp_combined",
+                          "stop_wdl_exp_combined_collapsed", vars_B)
+formula_B_collapsed <- as.formula(
+  paste(outcome_var, "~", paste(vars_B_collapsed, collapse = " + ")))
+
+collapsed_fits <- lapply(seq_len(m), function(i) {
+  d_col <- collapse_wdl(imputed_list[[i]], wdl_var)
+  tryCatch(
+    glm(formula_B_collapsed, data = d_col, family = binomial()),
+    error = function(e) NULL
+  )
+})
+
+n_collapsed_ok <- sum(!sapply(collapsed_fits, is.null))
+cat(sprintf("Collapsed model fitted: %d / %d imputations\n\n", n_collapsed_ok, m))
+
+# Pool collapsed results using mice::as.mira() + pool()
+valid_collapsed <- Filter(Negate(is.null), collapsed_fits)
+if (length(valid_collapsed) >= 2) {
+  mira_collapsed  <- mice::as.mira(valid_collapsed)
+  pooled_collapsed <- mice::pool(mira_collapsed)
+  smry_collapsed   <- summary(pooled_collapsed, conf.int = TRUE) %>%
+    as.data.frame() %>%
+    mutate(
+      OR       = exp(estimate),
+      OR_lower = exp(`2.5 %`),
+      OR_upper = exp(`97.5 %`),
+      OR_CI    = sprintf("%.2f [%.2f, %.2f]", OR, OR_lower, OR_upper)
+    ) %>%
+    filter(grepl("stop_wdl_exp_combined_collapsed", term)) %>%
+    select(term, OR_CI, p.value)
+
+  cat("Collapsed model — stop_wdl_exp_combined_collapsed coefficients:\n\n")
+  print(smry_collapsed, row.names = FALSE)
+  cat("\n")
+
+  # Cross-check: compare Atypical level to Firth levels 2/3/4 directionally
+  cat("Interpretation of collapsed vs Firth estimates:\n")
+  cat("  The 'Atypical withdrawal' level combines what were levels 2, 3,\n")
+  cat("  and 4 in the original coding. Compare its OR to the Firth\n")
+  cat("  estimates for those levels above to assess whether collapsing\n")
+  cat("  preserves the direction and approximate magnitude of the effect.\n\n")
+} else {
+  cat("⚠️  Insufficient successful fits for collapsed model pooling.\n\n")
+  smry_collapsed <- data.frame()
+}
+
+# ── D4: Recommendation ────────────────────────────────────────────────────────
+cat("D4: Recommendation for manuscript reporting\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+cat("RECOMMENDED APPROACH: Firth penalised logistic regression\n\n")
+
+cat("RATIONALE:\n")
+cat("  1. Standard MLE produces unreliable ORs for levels 3 and 4 in\n")
+cat("     BOTH the full sample and sensitivity analyses. The issue is\n")
+cat("     not the sensitivity analysis — it is the underlying sparsity.\n\n")
+cat("  2. Firth regression is specifically designed for this situation.\n")
+cat("     It is widely used in clinical research when cell counts are\n")
+cat("     sparse, and is accepted by major clinical journals as a\n")
+cat("     primary analysis method when sample sizes preclude reliable\n")
+cat("     MLE estimation (Heinze & Schemper, 2002).\n\n")
+cat("  3. Collapsing levels 2-4 is defensible but loses granularity\n")
+cat("     and changes the comparison structure. Use as a sensitivity\n")
+cat("     check to validate the Firth estimates directionally, not as\n")
+cat("     the primary reported model.\n\n")
+cat("REPORTING LANGUAGE:\n")
+cat("  'Due to the rarity of withdrawal presentations limited to\n")
+cat("  anxiety only (level 2), other mental health symptoms only\n")
+cat("  (level 3), or physical symptoms only (level 4; combined n ≈ X),\n")
+cat("  complete or near-complete separation occurred in the standard\n")
+cat("  logistic regression model. We therefore report Firth penalised\n")
+cat("  regression estimates for these levels, which provide finite,\n")
+cat("  bias-reduced odds ratios when maximum likelihood estimation\n")
+cat("  is unstable (Firth, 1993; Heinze & Schemper, 2002). All other\n")
+cat("  coefficients are reported from the standard model.'\n\n")
+cat("  NOTE: If the Firth OR for levels 3/4 is consistent in direction\n")
+cat("  with the collapsed model (D3), you can note this as a sensitivity\n")
+cat("  check confirming the direction of the effect despite sparsity.\n\n")
+
+#------------------------------------------------------------------------------
+# PART E: SYNTHESIS — SUBGROUP OR OUTLIER?
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART E: Synthesis\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat("MODEL A — Personality influential cases (n=23):\n")
+cat("──────────────────────────────────────────────\n")
+cat(sprintf("  Outcome rate:        91.3%% (vs 23.6%% base rate)\n"))
+cat(sprintf("  Scenario 2:          3/6 predictors flagged (DBAS_Medications,\n"))
+cat(sprintf("                       SURPS_Hopelessness, DBAS_Consequences)\n"))
+cat(sprintf("  Leverage mechanism:  see Part B results above\n"))
+cat(sprintf("  PMPP:                see Part C results above\n\n"))
+
+cat("  COMBINED INTERPRETATION:\n")
+cat("  The 91.3%% discontinuation rate is striking, but Scenario 2 and\n")
+cat("  the leverage/PMPP decomposition will determine whether this reflects\n")
+cat("  a coherent subgroup or ceiling-effect outliers. Key indicators:\n")
+cat("  - If Part B shows predominantly high leverage / low residual AND\n")
+cat("    Part C PMPP median >= 0.60: report as high-risk subgroup with\n")
+cat("    elevated dysfunctional sleep beliefs and hopelessness.\n")
+cat("  - If Part B shows predominantly low leverage / high residual AND\n")
+cat("    Part C PMPP median < 0.40: report as ceiling-effect cases whose\n")
+cat("    outcomes were not predictable from personality predictors alone;\n")
+cat("    note that DBAS_Medications remains the single robust predictor.\n")
+cat("  - Mixed pattern: acknowledge ambiguity and report both parts.\n\n")
+
+cat("MODEL B — Full influential cases (n=26):\n")
+cat("─────────────────────────────────────────\n")
+cat(sprintf("  Outcome rate:        69.2%% (vs 24.5%% non-influential)\n"))
+cat(sprintf("  Scenario 1:          7/9 predictors flagged — coherent subgroup\n"))
+cat(sprintf("  Non-robust findings: stop_wdl_exp_combined levels 3 and 4\n"))
+cat(sprintf("  Root cause:          Complete separation due to category sparsity\n\n"))
+
+cat("  COMBINED INTERPRETATION:\n")
+cat("  Model B influential cases are a clinically coherent subgroup —\n")
+cat("  participants with high BZRA doses, more sleep conditions, longer\n")
+cat("  use, and atypical withdrawal profiles. The 69.2%% discontinuation\n")
+cat("  rate suggests these are genuinely high-risk individuals whose\n")
+cat("  predictor profiles the model recognises.\n\n")
+cat("  The stop_wdl_exp_combined level 3/4 non-robustness is a separate\n")
+cat("  issue — category sparsity requiring Firth regression (Part D).\n")
+cat("  It does not undermine the broader robustness of Model B. The two\n")
+cat("  robust predictors (capabilityC and DBAS_Medications) are stable\n")
+cat("  and the Scenario 1 classification holds.\n\n")
+
+#------------------------------------------------------------------------------
+# PART F: SAVE RESULTS
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART F: Saving results\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+chunk14b_results <- list(
+
+  # Leverage/residual decomposition
+  decomp_A = decomp_A,
+  decomp_B = decomp_B,
+
+  # PMPP
+  pmpp_A = pmpp_A,
+  pmpp_B = pmpp_B,
+
+  # Separation analysis
+  separation = list(
+    cell_counts_full    = cell_pooled,
+    cell_counts_reduced = cell_reduced,
+    firth_pooled        = firth_pooled,
+    smry_collapsed      = smry_collapsed,
+    comparison_mle_firth = comparison_mle_firth
+  ),
+
+  # Metadata
+  metadata = list(
+    outcome       = outcome_var,
+    vars_A        = vars_A,
+    vars_B        = vars_B,
+    inf_idx_A     = inf_idx_A,
+    inf_idx_B     = inf_idx_B,
+    N             = N,
+    m             = m,
+    firth_note    = paste0(
+      "Firth penalised regression applied to full Model B across all ",
+      m, " imputations. Pooled via Rubin's rules. Recommended for ",
+      "stop_wdl_exp_combined levels 3 and 4 due to near-complete separation."),
+    separation_note = paste0(
+      "Complete separation in stop_wdl_exp_combined levels 3 and 4 is ",
+      "due to category sparsity (near-zero continuers), not influential cases. ",
+      "Persists after overlap-only removal. Firth regression recommended.")
   )
 )
 
-saveRDS(pmpp_results,  "chunk14b_pmpp_results.rds")
-write_csv(pmpp_table,  "chunk14b_pmpp_influential_cases.csv")
+saveRDS(chunk14b_results,  "chunk14b_results.rds")
+write_csv(decomp_A$case_df, "chunk14b_leverage_residual_modelA.csv")
+write_csv(decomp_B$case_df, "chunk14b_leverage_residual_modelB.csv")
+write_csv(pmpp_A$pmpp_table, "chunk14b_pmpp_modelA.csv")
+write_csv(pmpp_B$pmpp_table, "chunk14b_pmpp_modelB.csv")
+write_csv(firth_pooled,       "chunk14b_firth_pooled_modelB.csv")
+write_csv(cell_pooled,        "chunk14b_wdl_cell_counts_full.csv")
+write_csv(cell_reduced,       "chunk14b_wdl_cell_counts_reduced.csv")
 
-cat("✓ Saved: chunk14b_pmpp_results.rds\n")
-cat("✓ Saved: chunk14b_pmpp_influential_cases.csv\n\n")
+cat("✓ Saved: chunk14b_results.rds\n")
+cat("✓ Saved: chunk14b_leverage_residual_modelA.csv\n")
+cat("✓ Saved: chunk14b_leverage_residual_modelB.csv\n")
+cat("✓ Saved: chunk14b_pmpp_modelA.csv\n")
+cat("✓ Saved: chunk14b_pmpp_modelB.csv\n")
+cat("✓ Saved: chunk14b_firth_pooled_modelB.csv\n")
+cat("✓ Saved: chunk14b_wdl_cell_counts_full.csv\n")
+cat("✓ Saved: chunk14b_wdl_cell_counts_reduced.csv\n\n")
 
 #------------------------------------------------------------------------------
 # SUMMARY
@@ -10757,35 +11790,55 @@ cat("═════════════════════════
 cat("CHUNK 14b COMPLETE\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
-cat(sprintf("Influential cases (N=%d): median PMPP = %.3f (IQR: %.3f–%.3f)\n",
-            length(inf_idx_A),
-            median(pmpp_inf),
-            quantile(pmpp_inf, 0.25),
-            quantile(pmpp_inf, 0.75)))
-cat(sprintf("Non-influential (N=%d): median PMPP = %.3f\n",
-            length(noninf_idx_A), median(pmpp_noninf)))
-cat(sprintf("Wilcoxon: W = %.1f, p = %.4f\n\n", wtest$statistic, wtest$p.value))
-cat(interp, "\n\n")
+cat("QUESTION 1 — Subgroup or outlier?\n")
+cat(sprintf("  Model A: %d influential cases, 91.3%% discontinued, Scenario 2\n",
+            length(inf_idx_A)))
+cat("  → See Part B (leverage/residual) and Part C (PMPP) for mechanism\n\n")
+cat(sprintf("  Model B: %d influential cases, 69.2%% discontinued, Scenario 1\n",
+            length(inf_idx_B)))
+cat("  → Coherent clinical subgroup (7/9 predictors flagged)\n\n")
+
+cat("QUESTION 2 — Separation in stop_wdl_exp_combined levels 3 and 4:\n")
+cat("  Root cause: category sparsity, not influential cases\n")
+cat("  → Firth penalised regression recommended for these levels\n")
+cat("  → Collapsed sensitivity (levels 2+3+4) run as validation\n")
+cat("  → Standard MLE estimates for all other predictors unchanged\n\n")
 
 cat("FILES CREATED:\n")
-cat("  1. chunk14b_pmpp_results.rds\n")
-cat("  2. chunk14b_pmpp_influential_cases.csv\n\n")
+cat("  1. chunk14b_results.rds\n")
+cat("  2. chunk14b_leverage_residual_modelA.csv\n")
+cat("  3. chunk14b_leverage_residual_modelB.csv\n")
+cat("  4. chunk14b_pmpp_modelA.csv\n")
+cat("  5. chunk14b_pmpp_modelB.csv\n")
+cat("  6. chunk14b_firth_pooled_modelB.csv\n")
+cat("  7. chunk14b_wdl_cell_counts_full.csv\n")
+cat("  8. chunk14b_wdl_cell_counts_reduced.csv\n\n")
 
 cat("NOTES:\n")
-cat("  - PMPP = pooled mean predicted probability across 42 imputations\n")
-cat("  - Wilcoxon rank-sum used (non-parametric; PMPP distribution likely\n")
-cat("    boundary-piled near 1.0 for influential cases)\n")
-cat("  - Interpretation thresholds: >= 0.70 strong, 0.40-0.69 moderate,\n")
-cat("    < 0.40 outlier concern\n")
-cat("  - Per-case PMPP range (min/max across imputations) reflects\n")
-cat("    imputation-to-imputation stability of each case's predicted risk\n\n")
+cat(sprintf("  - m = %d imputations throughout\n", m))
+cat("  - Leverage threshold: 2x median of non-influential cases\n")
+cat("  - Residual threshold: 2x median of non-influential cases\n")
+cat("  - Wilcoxon rank-sum used for leverage and residual comparisons\n")
+cat("    (non-parametric; distributions likely skewed)\n")
+cat("  - PMPP computed from predict(..., type='response') averaged\n")
+cat("    across imputations independently of outcome\n")
+cat("  - Firth: logistf::logistf(firth=TRUE, pl=FALSE) per imputation;\n")
+cat("    pooled via Rubin's rules (manual, same as pool_glm_manual)\n")
+cat("  - Collapsed model pooled via mice::as.mira() + mice::pool()\n")
+cat("  - logistf package required: install.packages('logistf')\n\n")
 
 cat("REFERENCES:\n")
 cat("  Cook RD (1977). Detection of influential observations. Technometrics.\n")
+cat("  Firth D (1993). Bias reduction of MLE. Biometrika, 80(1):27-38.\n")
+cat("  Heinze G, Schemper M (2002). A solution to the problem of separation\n")
+cat("    in logistic regression. Statistics in Medicine, 21:2409-2419.\n")
 cat("  Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys.\n\n")
 
 cat("✓ Ready for Chunk 15\n\n")
 ```
+
+
+
 
 ## Complete Case Analysis
 ```{r}
