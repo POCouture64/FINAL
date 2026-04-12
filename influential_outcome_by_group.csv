@@ -1,5 +1,5 @@
 Group,N,N_Discontinued,Pct_Discontinued
-Influential (A only),14,14,100
-Influential (both),11,11,100
-Influential (B only),15,9,60
-Non-influential (both),382,81,21.2
+Influential (both),9,9,100
+Influential (A only),14,12,85.7
+Influential (B only),17,9,52.9
+Non-influential (both),382,85,22.3
