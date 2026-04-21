@@ -99,6 +99,7 @@
 "income",9,2.13270142180095,"Minimal (<5%)"
 "employment",1,0.23696682464455,"Minimal (<5%)"
 "osss_3_score",1,0.23696682464455,"Minimal (<5%)"
+"freq_dich",0,0,"Minimal (<5%)"
 "age",0,0,"Minimal (<5%)"
 "sex",0,0,"Minimal (<5%)"
 "prov_terr",0,0,"Minimal (<5%)"

@@ -1,0 +1,9 @@
+variable,group,mean_val,sd_val
+capabilityC,A-only influential,4.177,0.741
+capabilityC,B-only influential,2.854,1.025
+capabilityC,Non-influential,3.039,1.05
+capabilityC,Overlap (both),3.106,1.343
+side_effectsC,A-only influential,1.633,0.605
+side_effectsC,B-only influential,2.231,0.796
+side_effectsC,Non-influential,2.24,0.703
+side_effectsC,Overlap (both),2.453,0.974

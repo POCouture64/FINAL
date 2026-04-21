@@ -12322,13 +12322,9 @@ cat("✓ Ready for Chunk 15\n\n")
 #   and Model B. Assesses whether imputation meaningfully changed findings.
 #
 # Models:
-#   Model A — Personality (interpretation set)
-#             5 predictors: DBAS_Medications, SURPS_Hopelessness,
-#             CISS_Emotion, BFI_Neuroticism, DBAS_Consequences
-#   Model B — Full (interpretation set)
-#             8 predictors: capabilityC, DBAS_Medications, side_effectsC,
-#             bzra_daily_diazepam_eq, stop_wdl_exp_combined,
-#             wdl_symptom_count, n_sleep_conditions, c_lengthofuse
+#   Variable sets are pulled directly from chunk12$variables$model_A and
+#   chunk12$variables$model_B (VSURF interpretation sets from Chunks 11A/11B).
+#   Both models use the raw-score versions to match Chunk 12's primary output.
 #
 # Complete case definition:
 #   Non-missing on ALL predictors (union of both models) + outcome.
@@ -12342,13 +12338,15 @@ cat("✓ Ready for Chunk 15\n\n")
 #     Chunk 9 exactly (na.rm = FALSE, all items required).
 #     Reverse-coded items use _r suffix applied in Chunk 6.
 #
-#   capabilityC and side_effectsC:
-#     COM-B composite scores centred in Chunk 9. Reconstructed here
-#     from their raw Likert items in SIMOA_analysis.rds:
-#       capabilityC   <- mean(capability_1) centred by subtracting mean
-#       side_effectsC <- mean(side_effects_1:4) centred by subtracting mean
-#     Centring uses the complete-case mean (not the full-sample mean used
-#     in Chunk 9). This is noted as a minor methodological deviation.
+#   capabilityC:
+#     Reconstructed from raw items matching Chunk 9:
+#       mean(capability_1, 6 - capability), then centred by subtracting mean.
+#     Centring uses the complete-case mean (not the full-sample imputed mean
+#     used in Chunk 9). This is noted as a minor methodological deviation.
+#
+#   side_effectsC:
+#     mean(side_effects_1:4), centred by subtracting complete-case mean.
+#     Same minor centring deviation as capabilityC.
 #
 #   stopped_bzra (outcome):
 #     Not present in SIMOA_analysis.rds — derived here from freq_dich
@@ -12356,9 +12354,20 @@ cat("✓ Ready for Chunk 15\n\n")
 #       1 = Stoppers  (freq_dich 0 or 1)
 #       0 = Continuers (freq_dich 2)
 #
-#   All other Model B variables (bzra_daily_diazepam_eq, stop_wdl_exp_combined,
-#   wdl_symptom_count, n_sleep_conditions, c_lengthofuse):
-#     Taken directly from SIMOA_analysis.rds as-is.
+#   stop_wdl_exp_combined:
+#     3-level unordered factor with levels 0/1/2 and labels
+#     "No withdrawal" / "Insomnia only" / "Other withdrawal symptoms",
+#     matching Chunks 5+6 and 9.
+#
+#   All other variables taken directly from SIMOA_analysis.rds as-is.
+#
+# BZRA dose variable:
+#   bzra_daily_dose_eq (renamed from bzra_daily_diazepam_eq in Chunk 5+6).
+#   Chunk 12 pulls this correctly from VSURF results; Chunk 15 matches.
+#
+# MI comparison:
+#   Raw-score summaries pulled from chunk12$summaries$model_A_raw and
+#   chunk12$summaries$model_B_raw, consistent with Chunk 12's primary output.
 #
 # References:
 #   Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys.
@@ -12392,16 +12401,18 @@ if (!file.exists("regression_comparison_results.rds"))
 raw_data <- readRDS("SIMOA_analysis.rds")
 chunk12  <- readRDS("regression_comparison_results.rds")
 
-outcome_var <- chunk12$metadata$outcome
-vars_A      <- chunk12$variables$model_A
-vars_B      <- chunk12$variables$model_B
-m_imps      <- chunk12$metadata$m   # 42 — pulled directly, not hardcoded
+outcome_var <- chunk12$metadata$outcome           # "stopped_bzra"
+vars_A      <- chunk12$variables$model_A          # VSURF interpretation set
+vars_B      <- chunk12$variables$model_B          # VSURF interpretation set
+m_imps      <- chunk12$metadata$m                 # pulled directly, not hardcoded
+N_mi        <- chunk12$metadata$N                 # full imputed sample N
 
 cat(sprintf("✓ Loaded SIMOA_analysis.rds      (%d rows × %d columns)\n",
             nrow(raw_data), ncol(raw_data)))
 cat(sprintf("✓ Loaded regression_comparison_results.rds\n\n"))
 cat(sprintf("Outcome:          %s\n", outcome_var))
 cat(sprintf("Imputations (m):  %d\n", m_imps))
+cat(sprintf("N (MI sample):    %d\n", N_mi))
 cat(sprintf("Model A vars (%d): %s\n", length(vars_A), paste(vars_A, collapse = ", ")))
 cat(sprintf("Model B vars (%d): %s\n", length(vars_B), paste(vars_B, collapse = ", ")))
 cat(sprintf("Union pool vars:  %s\n\n",
@@ -12438,6 +12449,9 @@ if (length(absent) > 0) {
 
 #------------------------------------------------------------------------------
 # PART C: SUBSCALE CONSTRUCTION (IDENTICAL TO CHUNK 9)
+#
+# na.rm = FALSE ensures a subscale score is only produced when ALL items
+# are present, matching Chunk 9 exactly.
 #------------------------------------------------------------------------------
 
 cat("PART C: Subscale construction (na.rm = FALSE, matching Chunk 9)\n")
@@ -12492,13 +12506,13 @@ raw_data <- make_subscale(raw_data,
   paste0("ciss", c(1, 4, 7, 9, 15, 18, 21)),  "CISS_Avoidance")
 cat("\n")
 
-# ── BFI-10 subscales (using _r items) ────────────────────────────────────────
+# ── BFI-10 subscales (using _r items from Chunk 6) ───────────────────────────
 cat("BFI-10 subscales:\n")
-raw_data <- make_subscale(raw_data, c("reserved_r","outgoing"),        "BFI_Extraversion")
-raw_data <- make_subscale(raw_data, c("find_fault_r","trusting"),      "BFI_Agreeableness")
-raw_data <- make_subscale(raw_data, c("lazy_r","thorough"),            "BFI_Conscientiousness")
-raw_data <- make_subscale(raw_data, c("relaxed_r","nervous"),          "BFI_Neuroticism")
-raw_data <- make_subscale(raw_data, c("few_interests_r","imagination"), "BFI_Openness")
+raw_data <- make_subscale(raw_data, c("reserved_r","outgoing"),         "BFI_Extraversion")
+raw_data <- make_subscale(raw_data, c("find_fault_r","trusting"),       "BFI_Agreeableness")
+raw_data <- make_subscale(raw_data, c("lazy_r","thorough"),             "BFI_Conscientiousness")
+raw_data <- make_subscale(raw_data, c("relaxed_r","nervous"),           "BFI_Neuroticism")
+raw_data <- make_subscale(raw_data, c("few_interests_r","imagination"),  "BFI_Openness")
 cat("\n")
 
 # ── SURPS subscales ───────────────────────────────────────────────────────────
@@ -12517,25 +12531,30 @@ cat("\n")
 #------------------------------------------------------------------------------
 # PART D: CONSTRUCT COM-B COMPOSITE SCORES FROM RAW ITEMS
 #
-# capabilityC and side_effectsC are mean Likert composites centred by
-# subtracting the sample mean. Reconstructed here from raw items in
-# SIMOA_analysis.rds using the same item sets as Chunk 9.
+# Matches Chunk 9 composite formulas exactly:
+#   capabilityC   = mean(capability_1, 6 - capability), then centred
+#   side_effectsC = mean(side_effects_1:4), then centred
 #
-# Centring: subtract column mean (na.rm = TRUE) to match Chunk 9 approach.
-# NOTE: centring uses the complete-case mean here, not the full-sample mean
-# from Chunk 9. This is a minor methodological deviation documented below.
+# Inline reversal of 'capability' (6 - capability) matches Chunk 9 Part B2.
 #
-# Only capabilityC and side_effectsC are strictly required for Model B.
-# The others are constructed for completeness / future use.
+# Centring: subtract complete-case column mean (minor deviation from Chunk 9,
+# which used the full imputed sample mean). Documented in footnote.
+#
+# Additional composites constructed for completeness / future use.
 #------------------------------------------------------------------------------
 
 cat("PART D: Constructing COM-B composite scores from raw items\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
+cat("NOTE: capabilityC = mean(capability_1, 6-capability) — matching Chunk 9.\n")
 cat("NOTE: Composites centred using complete-case column mean (minor\n")
-cat("      deviation from Chunk 9, which used full-sample imputed mean).\n\n")
+cat("      deviation from Chunk 9, which used full imputed sample mean).\n\n")
 
-centre_composite <- function(data, items, var_name) {
+make_composite_centred <- function(data, items, var_name,
+                                   inline_reverse = NULL, scale_max = NULL) {
+  # inline_reverse: named list, e.g. list(capability = 6)
+  # means that column will be replaced by (scale_max + 1 - x) before averaging
+
   available <- items[items %in% names(data)]
   missing   <- items[!items %in% names(data)]
 
@@ -12548,43 +12567,66 @@ centre_composite <- function(data, items, var_name) {
     return(data)
   }
 
-  raw_mean <- rowMeans(data[, available, drop = FALSE], na.rm = FALSE)
+  item_df <- data[, available, drop = FALSE]
+  item_df <- as.data.frame(lapply(item_df, as.numeric))
+
+  # Apply inline reversals
+  if (!is.null(inline_reverse)) {
+    for (col in names(inline_reverse)) {
+      if (col %in% names(item_df))
+        item_df[[col]] <- inline_reverse[[col]] - item_df[[col]]
+    }
+  }
+
+  raw_mean <- rowMeans(item_df, na.rm = FALSE)
   col_mean <- mean(raw_mean, na.rm = TRUE)
   data[[var_name]] <- raw_mean - col_mean
 
   n_complete <- sum(!is.na(data[[var_name]]))
-  cat(sprintf("  ✓  %-35s %d/%d items  %d complete  mean centred at %.3f\n",
+  cat(sprintf("  ✓  %-35s %d/%d items  %d complete  centred at %.3f\n",
               var_name, length(available), length(items), n_complete, col_mean))
   data
 }
 
-# Capability — single item; try capability_1 first, fall back to capability
-if ("capability_1" %in% names(raw_data)) {
-  raw_data <- centre_composite(raw_data, "capability_1", "capabilityC")
-} else if ("capability" %in% names(raw_data)) {
-  raw_data <- centre_composite(raw_data, "capability", "capabilityC")
-  cat("  (Note: used 'capability' — 'capability_1' not found)\n")
-} else {
-  stop("ERROR: Neither 'capability_1' nor 'capability' found in raw_data.")
+# capabilityC: mean(capability_1, 6 - capability) — matching Chunk 9 Part B2
+if (!all(c("capability_1", "capability") %in% names(raw_data))) {
+  stop("ERROR: 'capability_1' or 'capability' not found in raw_data.")
 }
+raw_data <- make_composite_centred(raw_data,
+  items          = c("capability_1", "capability"),
+  var_name       = "capabilityC",
+  inline_reverse = list(capability = 6))
 
-# Side effects — 4-item composite
-raw_data <- centre_composite(raw_data,
-  paste0("side_effects_", 1:4), "side_effectsC")
+# side_effectsC: mean(side_effects_1:4)
+raw_data <- make_composite_centred(raw_data,
+  items    = paste0("side_effects_", 1:4),
+  var_name = "side_effectsC")
 
-# Additional COM-B composites (not required for models but built for completeness)
+# Additional COM-B composites (for completeness)
 cat("\n  Additional COM-B composites (for completeness):\n")
-raw_data <- centre_composite(raw_data,
-  c("benefit_1","benefit_4","benefit_5","benefit_6"), "benefitsC")
-raw_data <- centre_composite(raw_data,
-  c("adls_1","adls_2"), "adlsC")
-raw_data <- centre_composite(raw_data,
-  c("dependence_1","dependence_2","dependence_3"), "dependenceC")
-raw_data <- centre_composite(raw_data,
-  c("motivation_1","motivation_2","motivation_3"), "motivationC")
+raw_data <- make_composite_centred(raw_data,
+  items    = c("benefit_1","benefit_4","benefit_5","benefit_6"),
+  var_name = "benefitsC")
+raw_data <- make_composite_centred(raw_data,
+  items    = c("adls_1","adls_2"),
+  var_name = "adlsC")
+raw_data <- make_composite_centred(raw_data,
+  items    = paste0("dependence_", 1:3),
+  var_name = "dependenceC")
+raw_data <- make_composite_centred(raw_data,
+  items    = paste0("motivation_", 1:3),
+  var_name = "motivationC")
+raw_data <- make_composite_centred(raw_data,
+  items          = c("desires_2", "inf_hcp_3"),
+  var_name       = "pharmacistC",
+  inline_reverse = list(inf_hcp_3 = 6))
+raw_data <- make_composite_centred(raw_data,
+  items          = c("desires_1", "inf_hcp_1"),
+  var_name       = "prescriberC",
+  inline_reverse = list(inf_hcp_1 = 6))
 cat("\n")
 
-# Verify capabilityC and side_effectsC were created
+# Verify required composites were created
 for (v in c("capabilityC", "side_effectsC")) {
   if (!v %in% names(raw_data))
     stop(sprintf("ERROR: %s could not be constructed. Check raw item names.", v))
@@ -12594,23 +12636,24 @@ for (v in c("capabilityC", "side_effectsC")) {
 cat("\n")
 
 #------------------------------------------------------------------------------
-# PART E: VERIFY REMAINING MODEL B VARIABLES AND DERIVE OUTCOME
+# PART E: VERIFY REMAINING MODEL VARIABLES AND DERIVE OUTCOME
 #
-# stopped_bzra is not present in SIMOA_analysis.rds — it was derived in
-# Chunk 9 from freq_dich. Derived here using identical logic:
+# stopped_bzra is not present in SIMOA_analysis.rds — derived here from
+# freq_dich using identical logic as Chunk 9 Part B3:
 #   1 = Stoppers  (freq_dich 0 or 1)
 #   0 = Continuers (freq_dich 2)
 #   NA otherwise
 #
-# All other Model B variables (bzra_daily_diazepam_eq, stop_wdl_exp_combined,
-# wdl_symptom_count, n_sleep_conditions, c_lengthofuse) are taken directly
-# from SIMOA_analysis.rds.
+# stop_wdl_exp_combined: coerced to 3-level unordered factor matching
+# Chunks 5+6 and 9 (levels 0/1/2, labels as defined in Chunk 5+6 Part B).
+#
+# bzra_daily_dose_eq: taken directly from SIMOA_analysis.rds.
 #------------------------------------------------------------------------------
 
-cat("PART E: Verifying remaining Model B variables and deriving outcome\n")
+cat("PART E: Verifying remaining model variables and deriving outcome\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
-# ── Derive outcome from freq_dich (matches Chunk 9 exactly) ──────────────────
+# ── Derive outcome from freq_dich (matches Chunk 9 Part B3 exactly) ──────────
 if (!outcome_var %in% names(raw_data)) {
 
   if (!"freq_dich" %in% names(raw_data))
@@ -12622,7 +12665,7 @@ if (!outcome_var %in% names(raw_data)) {
     TRUE                             ~ NA_integer_
   )
 
-  cat(sprintf("  ✓ '%s' derived from freq_dich (matching Chunk 9 logic)\n",
+  cat(sprintf("  ✓ '%s' derived from freq_dich (matching Chunk 9 Part B3 logic)\n",
               outcome_var))
   cat(sprintf("    Stoppers   (1): %d\n",
               sum(raw_data[[outcome_var]] == 1L, na.rm = TRUE)))
@@ -12636,11 +12679,41 @@ if (!outcome_var %in% names(raw_data)) {
               outcome_var, sum(!is.na(raw_data[[outcome_var]]))))
 }
 
-# ── Verify direct Model B variables ──────────────────────────────────────────
-direct_vars <- c("bzra_daily_diazepam_eq", "stop_wdl_exp_combined",
-                 "wdl_symptom_count", "n_sleep_conditions", "c_lengthofuse")
+# ── stop_wdl_exp_combined: 3-level unordered factor (Chunks 5+6, 9) ──────────
+if ("stop_wdl_exp_combined" %in% names(raw_data)) {
+  if (!is.factor(raw_data$stop_wdl_exp_combined)) {
+    raw_data$stop_wdl_exp_combined <- factor(
+      raw_data$stop_wdl_exp_combined,
+      levels  = c(0L, 1L, 2L),
+      labels  = c("No withdrawal", "Insomnia only", "Other withdrawal symptoms"),
+      ordered = FALSE
+    )
+    cat("  ✓ stop_wdl_exp_combined coerced to 3-level unordered factor\n")
+  } else {
+    # Verify it has the correct 3-level structure
+    if (!identical(levels(raw_data$stop_wdl_exp_combined),
+                   c("No withdrawal", "Insomnia only", "Other withdrawal symptoms"))) {
+      cat("  ⚠️  stop_wdl_exp_combined has unexpected levels — re-coding\n")
+      raw_data$stop_wdl_exp_combined <- factor(
+        as.integer(raw_data$stop_wdl_exp_combined) - 1L,
+        levels  = c(0L, 1L, 2L),
+        labels  = c("No withdrawal", "Insomnia only", "Other withdrawal symptoms"),
+        ordered = FALSE
+      )
+    }
+    cat("  ✓ stop_wdl_exp_combined already a factor — levels confirmed\n")
+  }
+  cat(sprintf("    Levels: %s\n\n",
+              paste(levels(raw_data$stop_wdl_exp_combined), collapse = " | ")))
+} else {
+  cat("  ⚠️  stop_wdl_exp_combined NOT found in raw_data — check Chunk 5+6\n\n")
+}
 
-for (v in direct_vars) {
+# ── Verify all other model variables ─────────────────────────────────────────
+all_model_vars <- union(vars_A, vars_B)
+
+cat("  Checking all model variables:\n")
+for (v in all_model_vars) {
   if (v %in% names(raw_data)) {
     cat(sprintf("  ✓  %-35s %d non-missing\n", v, sum(!is.na(raw_data[[v]]))))
   } else {
@@ -12649,17 +12722,6 @@ for (v in direct_vars) {
 }
 cat("\n")
 
-# Ensure stop_wdl_exp_combined is a factor with levels 0:5 matching Chunk 9/10
-if ("stop_wdl_exp_combined" %in% names(raw_data)) {
-  if (!is.factor(raw_data$stop_wdl_exp_combined)) {
-    raw_data$stop_wdl_exp_combined <- factor(raw_data$stop_wdl_exp_combined,
-                                             levels = 0:5)
-    cat("  ✓ stop_wdl_exp_combined coerced to factor (levels 0:5)\n\n")
-  } else {
-    cat("  ✓ stop_wdl_exp_combined already a factor\n\n")
-  }
-}
-
 #------------------------------------------------------------------------------
 # PART F: FINAL VARIABLE CHECK AND DEFINE COMPLETE CASES
 #------------------------------------------------------------------------------
@@ -12667,8 +12729,7 @@ if ("stop_wdl_exp_combined" %in% names(raw_data)) {
 cat("PART F: Final variable check and defining complete cases\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
-all_model_vars <- union(vars_A, vars_B)
-still_missing  <- all_model_vars[!all_model_vars %in% names(raw_data)]
+still_missing <- all_model_vars[!all_model_vars %in% names(raw_data)]
 
 if (length(still_missing) > 0) {
   cat("  ✗ Variables still missing after all construction steps:\n")
@@ -12683,8 +12744,8 @@ cat("      Both CC models use the identical case pool.\n\n")
 
 cc_vars <- c(outcome_var, all_model_vars)
 cc_data <- raw_data %>%
-  select(all_of(cc_vars)) %>%
-  filter(complete.cases(.))
+  dplyr::select(all_of(cc_vars)) %>%
+  dplyr::filter(complete.cases(.))
 
 # Drop unused factor levels after subsetting
 if ("stop_wdl_exp_combined" %in% names(cc_data))
@@ -12693,7 +12754,7 @@ if ("stop_wdl_exp_combined" %in% names(cc_data))
 n_total     <- nrow(raw_data)
 n_cc        <- nrow(cc_data)
 n_excluded  <- n_total - n_cc
-n_events    <- sum(cc_data[[outcome_var]])
+n_events    <- sum(cc_data[[outcome_var]] == 1L)
 n_nonevents <- n_cc - n_events
 
 cat("COMPLETE CASE SUMMARY:\n")
@@ -12778,10 +12839,10 @@ cat("─────────────────────────
 
 extract_cc <- function(model, label) {
   broom::tidy(model, conf.int = TRUE, exponentiate = TRUE) %>%
-    filter(term != "(Intercept)") %>%
-    mutate(
+    dplyr::filter(term != "(Intercept)") %>%
+    dplyr::mutate(
       OR_CI = sprintf("%.2f [%.2f, %.2f]", estimate, conf.low, conf.high),
-      sig   = case_when(
+      sig   = dplyr::case_when(
         p.value < 0.001 ~ "***",
         p.value < 0.01  ~ "**",
         p.value < 0.05  ~ "*",
@@ -12790,7 +12851,7 @@ extract_cc <- function(model, label) {
       ),
       model = label
     ) %>%
-    select(model, term,
+    dplyr::select(model, term,
            CC_OR    = estimate,
            CC_lower = conf.low,
            CC_upper = conf.high,
@@ -12803,11 +12864,11 @@ cc_A <- extract_cc(model_A_cc, "Model A CC")
 cc_B <- extract_cc(model_B_cc, "Model B CC")
 
 cat("MODEL A CC COEFFICIENTS:\n")
-print(cc_A %>% select(term, CC_OR_CI, CC_p, CC_sig), row.names = FALSE)
+print(cc_A %>% dplyr::select(term, CC_OR_CI, CC_p, CC_sig), row.names = FALSE)
 cat("\n")
 
 cat("MODEL B CC COEFFICIENTS:\n")
-print(cc_B %>% select(term, CC_OR_CI, CC_p, CC_sig), row.names = FALSE)
+print(cc_B %>% dplyr::select(term, CC_OR_CI, CC_p, CC_sig), row.names = FALSE)
 cat("\n")
 
 #------------------------------------------------------------------------------
@@ -12817,7 +12878,7 @@ cat("\n")
 cat("PART I: AUC (bootstrap CI, B=2000)\n")
 cat("───────────────────────────────────────────────────────────────\n\n")
 
-calc_auc <- function(model, data, outcome_var, boot_n = 2000, seed = 12345) {
+calc_auc <- function(model, data, outcome_var, boot_n = 2000, seed = 42) {
   pred    <- predict(model, type = "response")
   roc_obj <- roc(data[[outcome_var]], pred, quiet = TRUE)
   auc_val <- as.numeric(auc(roc_obj))
@@ -12841,15 +12902,18 @@ cat(sprintf("  ✓ Model B CC AUC: %s\n\n", auc_B_cc$formatted))
 
 #------------------------------------------------------------------------------
 # HELPER: EXTRACT MI SUMMARIES FROM CHUNK 12
-# Chunk 12 stores auc as a data frame with AUC_mean / AUC_lower /
-# AUC_upper / AUC_formatted columns (confirmed from Chunk 12 source).
+#
+# Pulls from raw-score summaries (model_A_raw, model_B_raw) to match
+# Chunk 12's primary output. AUC object is a data frame with
+# AUC_mean / AUC_lower / AUC_upper / AUC_formatted columns.
 #------------------------------------------------------------------------------
 
 get_mi_summary <- function(chunk12, model_key) {
+  # model_key: "model_A_raw" or "model_B_raw"
   chunk12$summaries[[model_key]] %>%
-    mutate(term = as.character(term)) %>%
-    filter(term != "(Intercept)") %>%
-    select(term,
+    dplyr::mutate(term = as.character(term)) %>%
+    dplyr::filter(term != "(Intercept)") %>%
+    dplyr::select(term,
            MI_OR    = OR,
            MI_lower = OR_lower,
            MI_upper = OR_upper,
@@ -12859,6 +12923,7 @@ get_mi_summary <- function(chunk12, model_key) {
 }
 
 extract_mi_auc <- function(auc_obj) {
+  # Handles both data frame and list formats defensively
   if (is.data.frame(auc_obj)) {
     list(AUC       = auc_obj$AUC_mean[1],
          AUC_lower = auc_obj$AUC_lower[1],
@@ -12875,8 +12940,8 @@ extract_mi_auc <- function(auc_obj) {
   }
 }
 
-mi_A     <- get_mi_summary(chunk12, "model_A")
-mi_B     <- get_mi_summary(chunk12, "model_B")
+mi_A     <- get_mi_summary(chunk12, "model_A_raw")
+mi_B     <- get_mi_summary(chunk12, "model_B_raw")
 mi_auc_A <- extract_mi_auc(chunk12$auc$model_A)
 mi_auc_B <- extract_mi_auc(chunk12$auc$model_B)
 
@@ -12893,25 +12958,25 @@ cat(sprintf("(%s)\n", paste(vars_A, collapse = ", ")))
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 build_comparison <- function(cc_df, mi_df) {
-  cc_df <- cc_df %>% mutate(term = as.character(term))
-  mi_df <- mi_df %>% mutate(term = as.character(term))
+  cc_df <- cc_df %>% dplyr::mutate(term = as.character(term))
+  mi_df <- mi_df %>% dplyr::mutate(term = as.character(term))
 
-  full_join(mi_df, cc_df %>% select(-model), by = "term") %>%
-    mutate(
+  dplyr::full_join(mi_df, cc_df %>% dplyr::select(-model), by = "term") %>%
+    dplyr::mutate(
       OR_change_pct = round(100 * (CC_OR - MI_OR) / MI_OR, 1),
-      Direction     = case_when(
+      Direction     = dplyr::case_when(
         CC_OR > MI_OR ~ "CC higher",
         CC_OR < MI_OR ~ "CC lower",
         TRUE          ~ "No change"
       ),
-      Sig_consistency = case_when(
+      Sig_consistency = dplyr::case_when(
         MI_p < 0.05 & CC_p < 0.05  ~ "Both significant",
         MI_p < 0.05 & CC_p >= 0.05 ~ "Lost significance in CC",
         MI_p >= 0.05 & CC_p < 0.05 ~ "Gained significance in CC",
         TRUE                        ~ "Both non-significant"
       )
     ) %>%
-    select(term, MI_OR_CI, MI_sig, CC_OR_CI, CC_sig,
+    dplyr::select(term, MI_OR_CI, MI_sig, CC_OR_CI, CC_sig,
            OR_change_pct, Direction, Sig_consistency)
 }
 
@@ -12981,7 +13046,7 @@ cat("═════════════════════════
 auc_table <- data.frame(
   Model       = c("Model A", "Model B"),
   Description = c("Personality interpretation set", "Full interpretation set"),
-  N_MI        = chunk12$metadata$N,
+  N_MI        = N_mi,
   N_CC        = n_cc,
   MI_AUC      = c(mi_auc_A$formatted, mi_auc_B$formatted),
   CC_AUC      = c(auc_A_cc$formatted, auc_B_cc$formatted),
@@ -13001,22 +13066,22 @@ cat("PART M: Publication-ready comparison table\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 pub_A <- comp_A %>%
-  mutate(Model = "Model A — Personality") %>%
-  select(Model, Predictor = term,
+  dplyr::mutate(Model = "Model A — Personality") %>%
+  dplyr::select(Model, Predictor = term,
          `MI OR [95% CI]` = MI_OR_CI, `MI p`  = MI_sig,
          `CC OR [95% CI]` = CC_OR_CI, `CC p`  = CC_sig,
          `OR Δ (%)`       = OR_change_pct,
          Consistency      = Sig_consistency)
 
 pub_B <- comp_B %>%
-  mutate(Model = "Model B — Full") %>%
-  select(Model, Predictor = term,
+  dplyr::mutate(Model = "Model B — Full") %>%
+  dplyr::select(Model, Predictor = term,
          `MI OR [95% CI]` = MI_OR_CI, `MI p`  = MI_sig,
          `CC OR [95% CI]` = CC_OR_CI, `CC p`  = CC_sig,
          `OR Δ (%)`       = OR_change_pct,
          Consistency      = Sig_consistency)
 
-pub_combined <- bind_rows(pub_A, pub_B)
+pub_combined <- dplyr::bind_rows(pub_A, pub_B)
 
 print(pub_combined, row.names = FALSE)
 cat("\n")
@@ -13025,15 +13090,20 @@ cat("FOOTNOTE:\n")
 cat("───────────────────────────────────────────────────────────────\n")
 cat(sprintf(
   "MI = Multiple imputation (N = %d, m = %d). CC = Complete cases (N = %d, %.1f%% of full sample).\n",
-  n_total, m_imps, n_cc, 100 * n_cc / n_total
+  N_mi, m_imps, n_cc, 100 * n_cc / n_total
 ))
 cat("Complete cases defined as non-missing on all model predictors and outcome (union of Models A and B).\n")
+cat("Variable sets derived from VSURF interpretation sets (Chunks 11A/11B) via chunk12$variables.\n")
 cat("All variables reconstructed from raw items in SIMOA_analysis.rds.\n")
-cat("stopped_bzra derived from freq_dich (0/1 = stopper, 2 = continuer), matching Chunk 9.\n")
-cat("capabilityC and side_effectsC centred using complete-case column mean\n")
-cat("(minor deviation from Chunk 9, which centred on full imputed sample mean).\n")
+cat("stopped_bzra derived from freq_dich (0/1 = stopper, 2 = continuer), matching Chunk 9 Part B3.\n")
+cat("capabilityC = mean(capability_1, 6-capability), centred on complete-case mean.\n")
+cat("side_effectsC = mean(side_effects_1:4), centred on complete-case mean.\n")
+cat("Minor centring deviation: Chunk 9 centred on full imputed sample mean.\n")
+cat("MI ORs from raw-score models (chunk12$summaries$model_A_raw / model_B_raw).\n")
+cat("stop_wdl_exp_combined: 3-level unordered factor (No withdrawal / Insomnia only / Other withdrawal symptoms).\n")
+cat("bzra_daily_dose_eq used (renamed from bzra_daily_diazepam_eq in Chunk 5+6).\n")
 cat("OR = odds ratio. CI = 95% confidence interval. OR Δ = 100 × (CC OR − MI OR) / MI OR.\n")
-cat("AUC bootstrapped (B = 2000). *p<.05 **p<.01 ***p<.001.\n\n")
+cat("AUC bootstrapped (B = 2000, seed = 42). *p<.05 **p<.01 ***p<.001.\n\n")
 
 #------------------------------------------------------------------------------
 # PART N: INTERPRETATION
@@ -13071,7 +13141,7 @@ for (label in c("A", "B")) {
     cat("  CONCLUSION: NOTABLE DIFFERENCES BETWEEN MI AND CC\n")
     cat("  CC estimates differ from MI, which may reflect bias from\n")
     cat("  non-random missingness. MI estimates are preferred given\n")
-    cat("  MAR assumption is supported.\n\n")
+    cat("  the MAR assumption is supported.\n\n")
   }
 }
 
@@ -13082,8 +13152,9 @@ cat(sprintf(
 cases only (n = %d, %.1f%% of the full sample of %d). Complete cases
 were defined as non-missing on all predictors across both models and
 the outcome (union of Models A and B). All variables were reconstructed
-from raw items; COM-B composites (capabilityC, side_effectsC) were
-re-centred on the complete-case mean. For Model A (%d predictors),
+from raw items in SIMOA_analysis.rds; capabilityC was computed as
+mean(capability_1, 6-capability) and side_effectsC as mean of four
+items, each centred on the complete-case mean. For Model A (%d predictors),
 odds ratios changed by a mean of %.1f%% relative to MI estimates
 (AUC CC = %s vs. MI AUC = %s). For Model B (%d predictors),
 odds ratios changed by a mean of %.1f%% (AUC CC = %s vs.
@@ -13116,16 +13187,28 @@ cc_output <- list(
   auc_table = auc_table,
   pub_table = pub_combined,
   metadata  = list(
-    outcome = outcome_var, vars_A = vars_A, vars_B = vars_B,
-    m = m_imps, N_total = n_total, N_cc = n_cc
+    outcome         = outcome_var,
+    outcome_coding  = "1=stopper (freq_dich 0 or 1), 0=continuer (freq_dich 2)",
+    outcome_source  = "Derived from freq_dich in raw_data — matching Chunk 9 Part B3",
+    vars_A          = vars_A,
+    vars_B          = vars_B,
+    vars_source     = "chunk12$variables$model_A and model_B (VSURF interpretation sets)",
+    mi_summary_used = "model_A_raw and model_B_raw from chunk12$summaries",
+    capabilityC     = "mean(capability_1, 6-capability), centred on CC mean",
+    side_effectsC   = "mean(side_effects_1:4), centred on CC mean",
+    bzra_note       = "bzra_daily_dose_eq (renamed from bzra_daily_diazepam_eq in Chunk 5+6)",
+    wdl_factor      = "3-level unordered: No withdrawal / Insomnia only / Other withdrawal symptoms",
+    centring_note   = "CC mean used — minor deviation from Chunk 9 (full imputed sample mean)",
+    m = m_imps, N_MI = N_mi, N_CC = n_cc, boot_n = 2000, seed = 42,
+    robust_A = robust_A, robust_B = robust_B
   )
 )
 
 saveRDS(cc_output,      "complete_case_sensitivity_results.rds")
-write_csv(pub_combined, "CC_vs_MI_comparison_table.csv")
-write_csv(auc_table,    "CC_vs_MI_AUC_comparison.csv")
-write_csv(comp_A,       "CC_vs_MI_modelA_coefficients.csv")
-write_csv(comp_B,       "CC_vs_MI_modelB_coefficients.csv")
+readr::write_csv(pub_combined, "CC_vs_MI_comparison_table.csv")
+readr::write_csv(auc_table,    "CC_vs_MI_AUC_comparison.csv")
+readr::write_csv(comp_A,       "CC_vs_MI_modelA_coefficients.csv")
+readr::write_csv(comp_B,       "CC_vs_MI_modelB_coefficients.csv")
 
 cat("✓ Saved: complete_case_sensitivity_results.rds\n")
 cat("✓ Saved: CC_vs_MI_comparison_table.csv\n")
@@ -13145,7 +13228,6 @@ cat(sprintf("Complete cases: %d / %d (%.1f%%)\n\n",
             n_cc, n_total, 100 * n_cc / n_total))
 
 for (label in c("A", "B")) {
-  comp     <- if (label == "A") comp_A     else comp_B
   auc_cc   <- if (label == "A") auc_A_cc   else auc_B_cc
   auc_mi   <- if (label == "A") mi_auc_A   else mi_auc_B
   auc_diff <- if (label == "A") auc_diff_A else auc_diff_B
@@ -13169,17 +13251,23 @@ cat("  5. CC_vs_MI_modelB_coefficients.csv\n\n")
 
 cat("NOTES:\n")
 cat(sprintf("  - m = %d imputations throughout\n", m_imps))
+cat("  - Variable sets pulled from chunk12$variables$model_A / model_B\n")
+cat("    (VSURF interpretation sets — not hardcoded)\n")
+cat("  - MI ORs from chunk12$summaries$model_A_raw / model_B_raw\n")
 cat("  - Complete cases = non-missing on union of all model vars + outcome\n")
 cat("  - ALL variables built from raw items in SIMOA_analysis.rds\n")
 cat("  - stopped_bzra derived from freq_dich (0/1=stopper, 2=continuer)\n")
-cat("    matching Chunk 9 logic exactly\n")
-cat("  - capabilityC: mean(capability_1) centred on CC column mean\n")
-cat("  - side_effectsC: mean(side_effects_1:4) centred on CC column mean\n")
-cat("  - Minor deviation: Chunk 9 centred on full imputed sample mean\n")
-cat("  - stop_wdl_exp_combined: unused levels dropped after CC subsetting\n")
-cat("  - Factor structure preserved; separation checked automatically\n")
+cat("    matching Chunk 9 Part B3 logic exactly\n")
+cat("  - capabilityC = mean(capability_1, 6-capability), centred on CC mean\n")
+cat("    (matches Chunk 9 Part B2 formula; minor centring deviation noted)\n")
+cat("  - side_effectsC = mean(side_effects_1:4), centred on CC mean\n")
+cat("  - stop_wdl_exp_combined: 3-level unordered factor\n")
+cat("    ('No withdrawal' / 'Insomnia only' / 'Other withdrawal symptoms')\n")
+cat("    matching Chunks 5+6 and 9; unused levels dropped after CC subsetting\n")
+cat("  - bzra_daily_dose_eq used (renamed from bzra_daily_diazepam_eq)\n")
+cat("  - Factor structure preserved; separation checked via NA coefficient check\n")
 cat("  - VIF uses GVIF for factor predictors (car::vif)\n")
-cat("  - AUC bootstrapped (B=2000, seed=12345)\n")
+cat("  - AUC bootstrapped (B=2000, seed=42, matching Chunk 12)\n")
 cat("  - Robustness threshold: mean |OR change| < 10% AND all terms\n")
 cat("    consistent in significance direction\n\n")
 
@@ -13189,6 +13277,7 @@ cat("  White IR et al. (2011). Stat Med, 30(4), 377-399.\n\n")
 
 cat("✓ Ready for Chunk 16\n\n")
 ```
+
 
 
 ## Correlation Matrix
