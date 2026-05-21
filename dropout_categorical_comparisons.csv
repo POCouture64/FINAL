@@ -1,0 +1,8 @@
+"Variable","Test","p_value","sig"
+"sex","Chi-square",0.9411,""
+"gender","Fisher's exact",0.8167,""
+"prov_terr","Fisher's exact",0.5902,""
+"education","Fisher's exact",0.0666,""
+"income","Fisher's exact",0.9552,""
+"employment","Fisher's exact",0.8645,""
+"driving_freq","Fisher's exact",0.7193,""
