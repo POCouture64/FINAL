@@ -146,486 +146,378 @@ cat("═════════════════════════
 ## Personality Missingness
 ```{r}
 #==============================================================================
-# CHUNK 4: COMPREHENSIVE MISSINGNESS DIAGNOSTICS
+# CHUNK 4: EARLY DROPOUT DIAGNOSTICS
 #==============================================================================
-# Purpose: Test MAR vs MNAR assumptions for all personality scales
-# Determines which variables to include in imputation
+# Purpose: Identify participants who dropped out before completing personality
+#          scales, and test whether dropouts differ from completers on observed
+#          pre-dropout variables.
+#
+# Key assumption: DBAS is the first personality scale in survey order.
+#   Confirmed via Step 0: all participants missing dbas1 are missing the
+#   entire personality block (100% across all scales).
 #==============================================================================
 
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("MISSINGNESS PATTERN ANALYSIS\n")
+cat("EARLY DROPOUT DIAGNOSTICS\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 library(naniar)
+library(dplyr)
+library(ggplot2)
+library(broom)
 
 # -----------------------------------------------------------------------------
-# A. Visualize missing data patterns
+# STEP 0: Validate dropout proxy
 # -----------------------------------------------------------------------------
 
-cat("PART A: Visualizing missingness patterns\n")
+cat("STEP 0: Validating dropout proxy\n")
 cat("─────────────────────────────────────────────────────────────\n\n")
 
-# Select personality scales
-personality_items <- SIMOA %>%
-  select(dbas1:dbas_16, reserved:imagination, surps1:surps23, ciss1:ciss21)
-
-# Missingness heatmap
-cat("Creating missingness heatmap...\n")
-png("missingness_heatmap.png", width = 1400, height = 800, res = 120)
-vis_miss(personality_items, cluster = TRUE)
-dev.off()
-cat("✓ Saved: missingness_heatmap.png\n\n")
-
-# Summary statistics
-cat("Missingness by scale:\n")
-miss_summary <- data.frame(
-  Scale = c("DBAS (16 items)", "BFI (10 items)", "SURPS (23 items)", "CISS (21 items)"),
-  N_Missing = c(
-    sum(is.na(SIMOA$dbas1)),
-    sum(is.na(SIMOA$reserved)),
-    sum(is.na(SIMOA$surps1)),
-    sum(is.na(SIMOA$ciss1))
-  ),
-  Percent = c(
-    round(100 * mean(is.na(SIMOA$dbas1)), 1),
-    round(100 * mean(is.na(SIMOA$reserved)), 1),
-    round(100 * mean(is.na(SIMOA$surps1)), 1),
-    round(100 * mean(is.na(SIMOA$ciss1)), 1)
+dropout_check <- SIMOA %>%
+  filter(is.na(dbas1)) %>%
+  summarise(
+    n_missing_dbas1         = n(),
+    pct_also_missing_dbas16 = round(100 * mean(is.na(dbas_16)), 1),
+    pct_also_missing_surps1 = round(100 * mean(is.na(surps1)), 1),
+    pct_also_missing_ciss1  = round(100 * mean(is.na(ciss1)), 1),
+    pct_also_missing_bfi    = round(100 * mean(is.na(reserved)), 1)
   )
-)
-print(miss_summary)
-cat("\n")
+
+cat("Among participants missing dbas1 (n =", dropout_check$n_missing_dbas1, "):\n")
+cat("  Also missing dbas_16:", dropout_check$pct_also_missing_dbas16, "%\n")
+cat("  Also missing surps1: ", dropout_check$pct_also_missing_surps1, "%\n")
+cat("  Also missing ciss1:  ", dropout_check$pct_also_missing_ciss1, "%\n")
+cat("  Also missing BFI:    ", dropout_check$pct_also_missing_bfi, "%\n\n")
+
+partial_check <- SIMOA %>%
+  filter(!is.na(dbas1)) %>%
+  summarise(
+    n_completed_dbas1        = n(),
+    pct_missing_later_surps1 = round(100 * mean(is.na(surps1)), 1),
+    pct_missing_later_ciss1  = round(100 * mean(is.na(ciss1)), 1),
+    pct_missing_later_bfi    = round(100 * mean(is.na(reserved)), 1)
+  )
+
+cat("Among participants who completed dbas1 (n =", partial_check$n_completed_dbas1, "):\n")
+cat("  Missing surps1: ", partial_check$pct_missing_later_surps1, "%\n")
+cat("  Missing ciss1:  ", partial_check$pct_missing_later_ciss1, "%\n")
+cat("  Missing BFI:    ", partial_check$pct_missing_later_bfi, "%\n\n")
 
 # -----------------------------------------------------------------------------
-# B. Create missingness indicators
+# STEP 1: Define dropout indicator
 # -----------------------------------------------------------------------------
 
-cat("PART B: Creating missingness indicators\n")
+cat("STEP 1: Defining dropout indicator\n")
 cat("─────────────────────────────────────────────────────────────\n\n")
 
 SIMOA <- SIMOA %>%
   mutate(
-    miss_DBAS = ifelse(is.na(dbas1), 1, 0),
-    miss_BFI = ifelse(is.na(reserved), 1, 0),
-    miss_SURPS = ifelse(is.na(surps1), 1, 0),
-    miss_CISS = ifelse(is.na(ciss1), 1, 0),
-    miss_ANY_personality = ifelse(miss_DBAS + miss_BFI + miss_SURPS + miss_CISS > 0, 1, 0),
-    n_personality_missing = miss_DBAS + miss_BFI + miss_SURPS + miss_CISS
+    dropout_before_personality = ifelse(is.na(dbas1), 1, 0)
   )
 
-cat("Patterns of missingness:\n")
-print(table(SIMOA$n_personality_missing))
-cat("\n")
-
-cat("People missing at least one scale:", sum(SIMOA$miss_ANY_personality), "\n")
-cat("People with complete personality data:", sum(SIMOA$miss_ANY_personality == 0), "\n\n")
+cat("Dropout before personality section:\n")
+print(table(SIMOA$dropout_before_personality, useNA = "ifany"))
+cat(sprintf("\n  Dropouts:   %d (%.1f%%)\n",
+            sum(SIMOA$dropout_before_personality == 1),
+            100 * mean(SIMOA$dropout_before_personality == 1)))
+cat(sprintf("  Completers: %d (%.1f%%)\n\n",
+            sum(SIMOA$dropout_before_personality == 0),
+            100 * mean(SIMOA$dropout_before_personality == 0)))
 
 # -----------------------------------------------------------------------------
-# C. Test predictors of missingness (MAR assessment)
+# STEP 2: Compare dropouts vs completers
 # -----------------------------------------------------------------------------
 
-cat("PART C: Testing predictors of missingness (MAR assessment)\n")
+cat("STEP 2: Comparing dropouts vs completers on pre-dropout variables\n")
 cat("─────────────────────────────────────────────────────────────\n\n")
 
-cat("GOAL: If missingness is predicted by observed variables, MAR is plausible.\n\n")
+# Ensure correct types
+truly_continuous <- c("age", "med_quant", "osss_3_score", "phq2_score")
+truly_categorical <- c("sex", "gender", "prov_terr", "education",
+                       "income", "employment", "driving_freq")
 
-# Define potential predictors (check which exist)
-demographic_vars_all <- c(
-  "age", "sex", "gender", "prov_terr",
-  "education", "income", "employment", "driving_freq", "med_quant", 
-  "osss_3_score", "phq2_score"
-)
-
-# Only keep variables that exist in dataset
-demographic_vars <- demographic_vars_all[demographic_vars_all %in% names(SIMOA)]
-
-cat("Available demographic predictors (", length(demographic_vars), "):\n")
-cat(paste("  •", demographic_vars, collapse = "\n"), "\n\n")
-
-# Function to test predictors
-test_missingness_predictors <- function(miss_var, data, predictors) {
-  
-  # Remove predictors that don't exist
-  available_preds <- predictors[predictors %in% names(data)]
-  
-  cat("  Testing with", length(available_preds), "predictors\n")
-  
-  # Formula
-  formula_str <- paste(miss_var, "~", paste(available_preds, collapse = " + "))
-  
-  # Fit model
-  model <- tryCatch({
-    glm(as.formula(formula_str), data = data, family = binomial())
-  }, error = function(e) {
-    cat("  ⚠️ Model failed:", e$message, "\n")
-    cat("  → Trying simpler model (age + sex + education)...\n")
-    
-    simple_formula <- paste(miss_var, "~ age + sex + education")
-    tryCatch({
-      glm(as.formula(simple_formula), data = data, family = binomial())
-    }, error = function(e2) {
-      cat("  ⚠️ Even simple model failed. Skipping.\n")
-      return(NULL)
-    })
-  })
-  
-  if(is.null(model)) return(list(model = NULL, results = NULL, significant = NULL))
-  
-  # Get results
-  results <- broom::tidy(model) %>%
-    filter(term != "(Intercept)") %>%
-    mutate(
-      OR = exp(estimate),
-      CI_lower = exp(estimate - 1.96 * std.error),
-      CI_upper = exp(estimate + 1.96 * std.error),
-      sig = ifelse(p.value < 0.05, "*", "")
-    ) %>%
-    arrange(p.value)
-  
-  # Significant predictors
-  sig_preds <- results %>%
-    filter(p.value < 0.05) %>%
-    pull(term)
-  
-  return(list(
-    model = model,
-    results = results,
-    significant = sig_preds
-  ))
+# Coerce continuous vars
+for (var in truly_continuous[truly_continuous %in% names(SIMOA)]) {
+  SIMOA[[var]] <- as.numeric(as.character(SIMOA[[var]]))
 }
 
-# Test for each scale
-cat("Testing predictors of DBAS missingness:\n")
-miss_DBAS_test <- test_missingness_predictors("miss_DBAS", SIMOA, demographic_vars)
-if(!is.null(miss_DBAS_test$results)) {
-  print(miss_DBAS_test$results %>% 
-          select(term, OR, CI_lower, CI_upper, p.value, sig) %>%
-          mutate(across(where(is.numeric), ~round(., 3))))
+# --- Continuous: Wilcoxon ---
+cat("Continuous variables (Wilcoxon rank-sum):\n")
+cat("─────────────────────────────────────────────────────────────\n")
+
+continuous_results <- list()
+
+for (var in truly_continuous[truly_continuous %in% names(SIMOA)]) {
+  completer_vals <- SIMOA[[var]][SIMOA$dropout_before_personality == 0]
+  dropout_vals   <- SIMOA[[var]][SIMOA$dropout_before_personality == 1]
+  if (sum(!is.na(completer_vals)) < 5 || sum(!is.na(dropout_vals)) < 5) next
+  test <- wilcox.test(completer_vals, dropout_vals, exact = FALSE)
+  cat(sprintf("  %-20s Completer Mdn=%.1f  Dropout Mdn=%.1f  W=%.1f  p=%.4f %s\n",
+              var,
+              median(completer_vals, na.rm = TRUE),
+              median(dropout_vals,   na.rm = TRUE),
+              test$statistic, test$p.value,
+              ifelse(test$p.value < .05, "*", "")))
+  continuous_results[[var]] <- data.frame(
+    Variable         = var,
+    Completer_Median = median(completer_vals, na.rm = TRUE),
+    Dropout_Median   = median(dropout_vals,   na.rm = TRUE),
+    W                = round(test$statistic, 1),
+    p_value          = round(test$p.value, 4),
+    sig              = ifelse(test$p.value < .05, "*", "")
+  )
 }
 cat("\n")
 
-cat("Testing predictors of BFI missingness:\n")
-miss_BFI_test <- test_missingness_predictors("miss_BFI", SIMOA, demographic_vars)
-if(!is.null(miss_BFI_test$results)) {
-  print(miss_BFI_test$results %>% 
-          select(term, OR, CI_lower, CI_upper, p.value, sig) %>%
-          mutate(across(where(is.numeric), ~round(., 3))))
-}
-cat("\n")
+# --- Categorical: Chi-square or Fisher's exact ---
+cat("Categorical variables (chi-square or Fisher's exact):\n")
+cat("─────────────────────────────────────────────────────────────\n")
 
-cat("Testing predictors of SURPS missingness:\n")
-miss_SURPS_test <- test_missingness_predictors("miss_SURPS", SIMOA, demographic_vars)
-if(!is.null(miss_SURPS_test$results)) {
-  print(miss_SURPS_test$results %>% 
-          select(term, OR, CI_lower, CI_upper, p.value, sig) %>%
-          mutate(across(where(is.numeric), ~round(., 3))))
-}
-cat("\n")
+categorical_results <- list()
 
-cat("Testing predictors of CISS missingness:\n")
-miss_CISS_test <- test_missingness_predictors("miss_CISS", SIMOA, demographic_vars)
-if(!is.null(miss_CISS_test$results)) {
-  print(miss_CISS_test$results %>% 
-          select(term, OR, CI_lower, CI_upper, p.value, sig) %>%
-          mutate(across(where(is.numeric), ~round(., 3))))
-}
-cat("\n")
-
-# Compile significant predictors
-all_sig_predictors <- unique(c(
-  miss_DBAS_test$significant,
-  miss_BFI_test$significant,
-  miss_SURPS_test$significant,
-  miss_CISS_test$significant
-))
-
-cat("═══════════════════════════════════════════════════════════════\n")
-cat("SIGNIFICANT PREDICTORS OF MISSINGNESS:\n")
-cat("═══════════════════════════════════════════════════════════════\n\n")
-
-if(length(all_sig_predictors) > 0) {
-  cat("Variables that predict missing personality data:\n")
-  for(pred in all_sig_predictors) {
-    cat("  •", pred, "\n")
-  }
-  cat("\n")
-  cat("INTERPRETATION:\n")
-  cat("→ Missingness is related to observed variables\n")
-  cat("→ MAR assumption is plausible (conditional on these predictors)\n")
-  cat("→ Include these in imputation model\n\n")
-  
-  missingness_mechanism <- "MAR"
-  
-} else {
-  cat("No significant predictors found.\n\n")
-  cat("INTERPRETATION:\n")
-  cat("→ Either MCAR or MNAR\n")
-  cat("→ Sensitivity analyses are critical\n\n")
-  
-  missingness_mechanism <- "MCAR_or_MNAR"
-}
-
-# -----------------------------------------------------------------------------
-# D. Visualize relationships between missingness and predictors
-# -----------------------------------------------------------------------------
-
-cat("PART D: Visualizing missingness relationships\n")
-cat("─────────────────────────────────────────────────────────────\n\n")
-
-if(length(all_sig_predictors) > 0) {
-  
-  cat("Creating visualization of significant predictors...\n")
-  
-  # For each significant predictor, create comparison plot
-  for(pred in all_sig_predictors[1:min(3, length(all_sig_predictors))]) {  # Limit to first 3
-    
-    plot_data <- SIMOA %>%
-      select(miss_ANY_personality, all_of(pred)) %>%
-      filter(!is.na(!!sym(pred))) %>%
-      mutate(missing_group = ifelse(miss_ANY_personality == 1, 
-                                     "Missing Personality", 
-                                     "Complete Personality"))
-    
-    # Check if numeric or categorical
-    if(is.numeric(plot_data[[pred]])) {
-      
-      p <- ggplot(plot_data, aes(x = missing_group, y = !!sym(pred), fill = missing_group)) +
-        geom_violin(alpha = 0.6) +
-        geom_boxplot(width = 0.2, alpha = 0.8) +
-        labs(
-          title = paste("Missingness by", pred),
-          x = "",
-          y = pred
-        ) +
-        theme_minimal() +
-        theme(legend.position = "none") +
-        scale_fill_brewer(palette = "Set2")
-      
-    } else {
-      
-      p <- ggplot(plot_data, aes(x = !!sym(pred), fill = missing_group)) +
-        geom_bar(position = "fill") +
-        labs(
-          title = paste("Missingness by", pred),
-          x = pred,
-          y = "Proportion",
-          fill = ""
-        ) +
-        theme_minimal() +
-        scale_fill_brewer(palette = "Set2") +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1))
-      
-    }
-    
-    filename <- paste0("missingness_by_", pred, ".png")
-    ggsave(filename, p, width = 8, height = 6, dpi = 300)
-    cat("  ✓ Saved:", filename, "\n")
-  }
-  
-  cat("\n")
-}
-
-# -----------------------------------------------------------------------------
-# E. Little's MCAR test
-# -----------------------------------------------------------------------------
-
-cat("PART E: Little's MCAR test\n")
-cat("─────────────────────────────────────────────────────────────\n\n")
-
-cat("Running Little's MCAR test on personality variables...\n")
-
-# Select personality scale scores (not items)
-personality_scores <- SIMOA %>%
-  select(starts_with("DBAS_"), starts_with("BFI_"), 
-         starts_with("SURPS_"), starts_with("CISS_"))
-
-# Run test
-mcar_test <- tryCatch({
-  naniar::mcar_test(personality_scores)
-}, error = function(e) {
-  cat("  ⚠️ MCAR test failed:", e$message, "\n")
-  return(NULL)
-})
-
-if(!is.null(mcar_test)) {
-  cat("\nLittle's MCAR test results:\n")
-  print(mcar_test)
-  cat("\n")
-  
-  if(mcar_test$p.value > 0.05) {
-    cat("INTERPRETATION:\n")
-    cat("→ p > .05: Cannot reject MCAR\n")
-    cat("→ Data may be MCAR (completely random)\n")
-    cat("→ Simple imputation methods may be sufficient\n\n")
-    mcar_conclusion <- "MCAR plausible"
+for (var in truly_categorical[truly_categorical %in% names(SIMOA)]) {
+  tbl <- table(SIMOA[[var]], SIMOA$dropout_before_personality, useNA = "no")
+  if (nrow(tbl) < 2) next
+  expected <- tryCatch(chisq.test(tbl)$expected, error = function(e) NULL)
+  if (is.null(expected)) next
+  if (min(expected) < 5) {
+    test <- fisher.test(tbl, simulate.p.value = TRUE, B = 10000)
+    cat(sprintf("  %-20s Fisher's p=%.4f %s  [small expected counts]\n",
+                var, test$p.value,
+                ifelse(test$p.value < .05, "*", "")))
+    categorical_results[[var]] <- data.frame(
+      Variable = var,
+      Test     = "Fisher's exact",
+      p_value  = round(test$p.value, 4),
+      sig      = ifelse(test$p.value < .05, "*", "")
+    )
   } else {
-    cat("INTERPRETATION:\n")
-    cat("→ p < .05: Reject MCAR\n")
-    cat("→ Data are MAR or MNAR\n")
-    cat("→ Multiple imputation recommended\n\n")
-    mcar_conclusion <- "Not MCAR"
+    test <- chisq.test(tbl)
+    cat(sprintf("  %-20s χ²(%d)=%.3f  p=%.4f %s\n",
+                var, test$parameter, test$statistic, test$p.value,
+                ifelse(test$p.value < .05, "*", "")))
+    categorical_results[[var]] <- data.frame(
+      Variable = var,
+      Test     = "Chi-square",
+      p_value  = round(test$p.value, 4),
+      sig      = ifelse(test$p.value < .05, "*", "")
+    )
   }
-} else {
-  mcar_conclusion <- "Test failed"
 }
+cat("\n")
 
 # -----------------------------------------------------------------------------
-# F. Outcome relationship with missingness
+# STEP 3: Outcome-dropout relationship
 # -----------------------------------------------------------------------------
 
-cat("PART F: Relationship between missingness and outcome\n")
+cat("STEP 3: Outcome-dropout relationship\n")
 cat("─────────────────────────────────────────────────────────────\n\n")
 
 outcome_var <- "freq_dich"
-# Note: freq_dich coding: 0,1 = discontinuers; 2 = continuers
 
-if(outcome_var %in% names(SIMOA)) {
-  
-  cat("Testing if discontinuation predicts personality missingness:\n\n")
-  
-  # Cross-tabulation
-  miss_by_outcome <- table(
-    SIMOA[[outcome_var]], 
-    SIMOA$miss_ANY_personality,
-    useNA = "ifany"
-  )
-  
-  cat("Missingness by discontinuation status:\n")
-  print(addmargins(miss_by_outcome))
+if (outcome_var %in% names(SIMOA)) {
+
+  tbl <- table(SIMOA[[outcome_var]], SIMOA$dropout_before_personality)
+  cat("Dropout status by", outcome_var, ":\n")
+  print(addmargins(tbl))
   cat("\n")
-  
-  # Chi-square test
-  chisq_test <- chisq.test(miss_by_outcome)
-  cat(sprintf("Chi-square test: χ²(1) = %.3f, p = %.4f\n\n", 
-              chisq_test$statistic, chisq_test$p.value))
-  
-  if(chisq_test$p.value < 0.05) {
-    cat("⚠️ IMPORTANT: Outcome predicts missingness!\n")
-    cat("→ This suggests MNAR (missing not at random)\n")
-    cat("→ Results may be biased even with imputation\n")
-    cat("→ Sensitivity analyses are CRITICAL\n\n")
+
+  expected <- tryCatch(chisq.test(tbl)$expected, error = function(e) NULL)
+  min_expected <- if (!is.null(expected)) round(min(expected), 2) else NA
+  cat(sprintf("Minimum expected cell count: %.2f\n\n", min_expected))
+
+  if (!is.na(min_expected) && min_expected < 5) {
+    cat("Expected counts too small for chi-square. Using Fisher's exact test.\n\n")
+    test <- fisher.test(tbl, simulate.p.value = TRUE, B = 10000)
+    cat(sprintf("Fisher's exact test: p = %.4f\n\n", test$p.value))
+    p_val <- test$p.value
+  } else {
+    test <- chisq.test(tbl)
+    cat(sprintf("Chi-square: χ²(%d) = %.3f, p = %.4f\n\n",
+                test$parameter, test$statistic, test$p.value))
+    p_val <- test$p.value
+  }
+
+  if (p_val < 0.05) {
+    cat("⚠️  Dropout is associated with outcome status.\n")
+    cat("→  MNAR signal: who dropped out depends on the outcome.\n")
+    cat("→  Sensitivity analyses are essential.\n\n")
     outcome_related <- TRUE
   } else {
-    cat("✓ Outcome does not predict missingness\n")
-    cat("→ MAR assumption more plausible\n\n")
+    cat("✓  Dropout is not significantly associated with outcome.\n")
+    cat("→  MAR assumption more defensible.\n\n")
     outcome_related <- FALSE
   }
-  
+
 } else {
-  cat("Outcome variable not found. Skipping outcome-missingness analysis.\n\n")
+  cat("Outcome variable not found.\n\n")
   outcome_related <- NA
 }
 
 # -----------------------------------------------------------------------------
-# G. Summary and recommendations
+# STEP 4: Multivariable logistic regression
+# -----------------------------------------------------------------------------
+
+cat("STEP 4: Multivariable logistic regression — predictors of dropout\n")
+cat("─────────────────────────────────────────────────────────────\n\n")
+cat("Identifies which pre-dropout variables independently predict dropout.\n\n")
+
+all_pred_vars <- c(truly_continuous, truly_categorical)
+available_preds <- all_pred_vars[all_pred_vars %in% names(SIMOA)]
+
+formula_str <- paste("dropout_before_personality ~",
+                     paste(available_preds, collapse = " + "))
+
+dropout_model <- tryCatch({
+  glm(as.formula(formula_str), data = SIMOA, family = binomial())
+}, error = function(e) {
+  cat("⚠️  Full model failed:", e$message, "\n")
+  cat("→  Falling back to age + sex + education.\n\n")
+  tryCatch(
+    glm(dropout_before_personality ~ age + sex + education,
+        data = SIMOA, family = binomial()),
+    error = function(e2) { cat("⚠️  Fallback also failed.\n"); NULL }
+  )
+})
+
+if (!is.null(dropout_model)) {
+  dropout_results <- broom::tidy(dropout_model) %>%
+    filter(term != "(Intercept)") %>%
+    mutate(
+      OR       = round(exp(estimate), 3),
+      CI_lower = round(exp(estimate - 1.96 * std.error), 3),
+      CI_upper = round(exp(estimate + 1.96 * std.error), 3),
+      p_value  = round(p.value, 4),
+      sig      = ifelse(p.value < 0.05, "*", "")
+    ) %>%
+    arrange(p.value) %>%
+    select(term, OR, CI_lower, CI_upper, p_value, sig)
+
+  print(dropout_results)
+  cat("\n")
+
+  sig_predictors <- dropout_results %>%
+    filter(p_value < 0.05) %>%
+    pull(term)
+
+  if (length(sig_predictors) > 0) {
+    cat("Independent predictors of dropout (p < .05):\n")
+    for (p in sig_predictors) cat("  •", p, "\n")
+    cat("\n→  Include these variables in your imputation model.\n\n")
+  } else {
+    cat("No independent predictors of dropout at p < .05.\n\n")
+  }
+
+} else {
+  sig_predictors <- character(0)
+}
+
+# -----------------------------------------------------------------------------
+# STEP 5: Overall summary
 # -----------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("MISSINGNESS DIAGNOSTICS SUMMARY\n")
+cat("DROPOUT ANALYSIS SUMMARY\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
-# Compile findings
-summary_findings <- data.frame(
-  Test = c(
-    "Predictors of missingness",
-    "Little's MCAR test",
-    "Outcome-missingness relationship"
-  ),
-  Result = c(
-    ifelse(length(all_sig_predictors) > 0, 
-           paste(length(all_sig_predictors), "significant predictors"), 
-           "No significant predictors"),
-    mcar_conclusion,
-    ifelse(is.na(outcome_related), "Not tested",
-           ifelse(outcome_related, "Significant (p<.05)", "Not significant"))
-  ),
-  Implication = c(
-    ifelse(length(all_sig_predictors) > 0, "MAR plausible", "MCAR or MNAR"),
-    ifelse(mcar_conclusion == "MCAR plausible", "MCAR", "MAR/MNAR"),
-    ifelse(is.na(outcome_related), "Unknown",
-           ifelse(outcome_related, "MNAR concern", "MAR plausible"))
-  )
-)
+cat(sprintf("Total N: %d\n", nrow(SIMOA)))
+cat(sprintf("Dropouts (missing personality section): %d (%.1f%%)\n",
+            sum(SIMOA$dropout_before_personality),
+            100 * mean(SIMOA$dropout_before_personality)))
+cat(sprintf("Completers: %d (%.1f%%)\n\n",
+            sum(SIMOA$dropout_before_personality == 0),
+            100 * mean(SIMOA$dropout_before_personality == 0)))
 
-print(summary_findings)
-cat("\n")
+cat("Significant group differences: ")
+any_sig_continuous   <- any(sapply(continuous_results,   function(x) x$sig == "*"))
+any_sig_categorical  <- any(sapply(categorical_results,  function(x) x$sig == "*"))
+if (!any_sig_continuous && !any_sig_categorical && length(sig_predictors) == 0) {
+  cat("None\n\n")
+} else {
+  cat("See above\n\n")
+}
 
-# Overall recommendation
+cat("Outcome-dropout association: ")
+if (is.na(outcome_related)) {
+  cat("Not tested\n\n")
+} else if (outcome_related) {
+  cat("Significant — MNAR concern\n\n")
+} else {
+  cat("Not significant — MAR plausible\n\n")
+}
+
 cat("OVERALL ASSESSMENT:\n")
 cat("─────────────────────────────────────────────────────────────\n")
 
-if(length(all_sig_predictors) > 0 && !outcome_related) {
-  cat("✓ MAR ASSUMPTION APPEARS REASONABLE\n\n")
-  cat("Evidence:\n")
-  cat("  • Missingness predicted by observed variables\n")
-  cat("  • Outcome does not predict missingness\n\n")
-  cat("RECOMMENDATION:\n")
-  cat("  1. Use multiple imputation (20+ imputations)\n")
-  cat("  2. Include these predictors in imputation model:\n")
-  for(pred in all_sig_predictors) {
-    cat("     •", pred, "\n")
-  }
-  cat("  3. Conduct complete-case sensitivity analysis\n")
-  cat("  4. Report both analyses in paper\n\n")
-  
-} else if(outcome_related) {
-  cat("⚠️ MNAR CONCERN\n\n")
-  cat("Evidence:\n")
-  cat("  • Outcome predicts missingness\n")
-  cat("  • Imputation may not recover true values\n\n")
-  cat("RECOMMENDATION:\n")
-  cat("  1. Use multiple imputation but interpret cautiously\n")
-  cat("  2. Prioritize complete-case analysis\n")
-  cat("  3. Conduct sensitivity analyses:\n")
-  cat("     • Pattern-mixture models\n")
-  cat("     • Tipping point analysis\n")
-  cat("  4. Discuss MNAR as limitation\n\n")
-  
+if (!outcome_related && !any_sig_continuous && !any_sig_categorical) {
+  cat("✓  Pattern consistent with MCAR.\n")
+  cat("   Dropouts do not differ from completers on any measured variable,\n")
+  cat("   and dropout is unrelated to outcome status.\n\n")
+  cat("RECOMMENDATIONS:\n")
+  cat("  1. Complete-case analysis is the primary approach and is defensible.\n")
+  cat("  2. Multiple imputation may be used as a sensitivity check.\n")
+  cat("  3. Note in limitations that MCAR cannot be formally proven —\n")
+  cat("     unmeasured variables may still predict dropout.\n\n")
+} else if (outcome_related) {
+  cat("⚠️  MNAR concern: dropout associated with outcome.\n\n")
+  cat("RECOMMENDATIONS:\n")
+  cat("  1. Multiple imputation is necessary but interpret cautiously.\n")
+  cat("  2. Conduct pattern-mixture or tipping point sensitivity analyses.\n")
+  cat("  3. Discuss MNAR as a limitation.\n\n")
 } else {
-  cat("⚠️ UNCERTAIN MECHANISM\n\n")
-  cat("Evidence:\n")
-  cat("  • No clear predictors of missingness\n")
-  cat("  • Could be MCAR or MNAR\n\n")
-  cat("RECOMMENDATION:\n")
-  cat("  1. Use multiple imputation conservatively\n")
-  cat("  2. Emphasize complete-case analysis\n")
-  cat("  3. Extensive sensitivity analyses\n")
-  cat("  4. Acknowledge uncertainty in limitations\n\n")
+  cat("~  MAR plausible: some variables predict dropout.\n\n")
+  cat("RECOMMENDATIONS:\n")
+  cat("  1. Use multiple imputation.\n")
+  cat("  2. Include significant predictors as auxiliary variables.\n")
+  cat("  3. Report complete-case analysis as sensitivity check.\n\n")
 }
 
-# Save results
+# -----------------------------------------------------------------------------
+# STEP 6: Save results
+# -----------------------------------------------------------------------------
+
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("SAVING RESULTS\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
-missingness_results <- list(
-  summary_statistics = miss_summary,
-  significant_predictors = all_sig_predictors,
-  DBAS_test = miss_DBAS_test,
-  BFI_test = miss_BFI_test,
-  SURPS_test = miss_SURPS_test,
-  CISS_test = miss_CISS_test,
-  mcar_test = mcar_test,
-  mcar_conclusion = mcar_conclusion,
-  outcome_related = outcome_related,
-  overall_assessment = summary_findings,
-  mechanism = missingness_mechanism
+dropout_results_obj <- list(
+  dropout_n               = sum(SIMOA$dropout_before_personality),
+  completer_n             = sum(SIMOA$dropout_before_personality == 0),
+  dropout_proxy_check     = dropout_check,
+  partial_completer_check = partial_check,
+  continuous_comparisons  = if (length(continuous_results) > 0)
+                              do.call(rbind, continuous_results) else NULL,
+  categorical_comparisons = if (length(categorical_results) > 0)
+                              do.call(rbind, categorical_results) else NULL,
+  logistic_results        = if (exists("dropout_results")) dropout_results else NULL,
+  sig_predictors          = sig_predictors,
+  outcome_related         = outcome_related
 )
 
-saveRDS(missingness_results, "missingness_diagnostics_results.rds")
-cat("✓ Saved: missingness_diagnostics_results.rds\n")
+saveRDS(dropout_results_obj, "dropout_diagnostics_results.rds")
+cat("✓ Saved: dropout_diagnostics_results.rds\n")
 
-write.csv(miss_summary, "missingness_summary_by_scale.csv", row.names = FALSE)
-cat("✓ Saved: missingness_summary_by_scale.csv\n")
+if (!is.null(dropout_results_obj$continuous_comparisons)) {
+  write.csv(dropout_results_obj$continuous_comparisons,
+            "dropout_continuous_comparisons.csv", row.names = FALSE)
+  cat("✓ Saved: dropout_continuous_comparisons.csv\n")
+}
 
-write.csv(summary_findings, "missingness_assessment_summary.csv", row.names = FALSE)
-cat("✓ Saved: missingness_assessment_summary.csv\n\n")
+if (!is.null(dropout_results_obj$categorical_comparisons)) {
+  write.csv(dropout_results_obj$categorical_comparisons,
+            "dropout_categorical_comparisons.csv", row.names = FALSE)
+  cat("✓ Saved: dropout_categorical_comparisons.csv\n")
+}
 
+cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("MISSINGNESS DIAGNOSTICS COMPLETE\n")
+cat("DROPOUT DIAGNOSTICS COMPLETE\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 ```
+
+
+
 
 
 ## Variable Coalescing, Preparation, Selection
@@ -8715,6 +8607,53 @@ cat("  Rubin, D.B. (1987). Multiple Imputation for Nonresponse in Surveys.\n\n")
 
 cat("✓ Ready for Chunk 12B: logistic regression (full model)\n")
 cat("✓ Ready for Chunk 12C: DeLong's test (model comparison)\n\n")
+
+#------------------------------------------------------------------------------
+# FULL VARIABLE IMPORTANCE FIGURE (ALL PREDICTORS — FOR THESIS)
+# Same formatting as the top-20 plot, but includes every candidate predictor.
+#------------------------------------------------------------------------------
+
+cat("Creating full variable importance figure (all predictors)...\n")
+
+plot_all <- importance_df %>%
+  mutate(In_Pred = Majority_Pred)
+
+p1_full <- ggplot(plot_all,
+                  aes(x     = reorder(Variable, Mean_Importance),
+                      y     = Mean_Importance,
+                      fill  = Domain,
+                      alpha = In_Pred)) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%d/%d", Pred_Count, m)),
+            hjust = -0.1, size = 2.6) +
+  scale_alpha_manual(values = c("TRUE" = 1.0, "FALSE" = 0.35),
+                     labels = c("TRUE" = "In prediction set",
+                                "FALSE" = "Not selected"),
+                     name = NULL) +
+  scale_fill_brewer(palette = "Set1", name = "Domain") +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
+  labs(
+    title    = "Variable Importance — Full Predictor Set (All Variables)",
+    subtitle = sprintf(
+      "VSURF majority vote across %d imputations  |  Stoppers (n=%d) vs Continuers (n=%d)  |  prediction set: %d variable(s)",
+      m, n_stoppers, n_continuers, length(majority_pred)),
+    x = NULL,
+    y = "Mean Variable Importance (averaged across imputations)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title      = element_text(hjust = 0.5, face = "bold", size = 13),
+    plot.subtitle   = element_text(hjust = 0.5, size = 9),
+    legend.position = "bottom",
+    axis.text.y     = element_text(size = 7)
+  )
+
+ggsave("VSURF_full_importance_ALL.png", p1_full,
+       width  = 12,
+       height = max(9, length(all_vars) * 0.28 + 2),
+       dpi    = 300)
+cat("✓ Saved: VSURF_full_importance_ALL.png\n\n")
 ```
 
 
@@ -9492,6 +9431,689 @@ cat("  Barnard & Rubin (1999). Biometrika, 86:948–955.\n\n")
 cat("✓ Ready for Chunk 13: reporting / visualisation\n\n")
 ```
 
+
+## Additional tests
+```{r}
+#==============================================================================
+# CHUNK 13: POST-LOGISTIC REGRESSION DIAGNOSTICS (MULTIPLY IMPUTED DATA)
+#==============================================================================
+# Purpose:
+#   Run all required post-hoc diagnostics for both logistic regression models
+#   fitted in Chunk 12. Specifically:
+#     1. Nagelkerke R²      — computed manually per imputation and averaged
+#                             (pool.r.squared() does not support GLM objects)
+#     2. Hosmer-Lemeshow    — mean chi-square across imputations (g=10, df=8)
+#     3. Confusion matrix   — sensitivity, specificity, PPV, NPV at Youden
+#                             optimal threshold (not default 0.5)
+#     4. Box-Tidwell test   — linearity in the logit (imputation 1 only;
+#                             Bonferroni correction applied)
+#     5. Class imbalance    — report distribution; justify threshold approach
+#                             over resampling per Klok et al. (2022)
+#
+# Design decisions:
+#   - All diagnostics applied to BOTH Model A and Model B.
+#   - Raw models from Chunk 12 are used throughout.
+#   - Nagelkerke R² computed manually as Cox-Snell R² rescaled by maximum
+#     achievable value (Nagelkerke, 1991); averaged across imputations.
+#   - Hosmer-Lemeshow: chi-square computed per imputation and averaged
+#     (Enders, 2010). g=10 decile groups, df=8.
+#   - Confusion matrix threshold optimised via Youden's J index; predicted
+#     probabilities averaged across all imputations before thresholding.
+#   - Box-Tidwell run on imputation 1 only (Harrell, 2015; van Buuren, 2018).
+#     Variables with min <= 0 shifted by +1 before log transformation.
+#     Bonferroni correction applied within each model.
+#   - Class imbalance: no resampling correction (Klok et al., 2022).
+#
+# Reads from:
+#   regression_comparison_results.rds  (Chunk 12)
+#   imputed_datasets_complete_final.rds (Chunk 9)
+#
+# References:
+#   Box & Tidwell (1962). Technometrics, 4(4):531-550.
+#   Enders CK (2010). Applied Missing Data Analysis. Guilford Press.
+#   Harrell FE (2015). Regression Modeling Strategies (2nd ed.). Springer.
+#   Hosmer & Lemeshow (2000). Applied Logistic Regression (2nd ed.). Wiley.
+#   Klok et al. (2022). JAMIA. doi:10.1093/jamia/ocac093
+#   Nagelkerke NJD (1991). Biometrika, 78(3):691-692.
+#   Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys. Wiley.
+#   van Buuren S (2018). Flexible Imputation of Missing Data. CRC Press.
+#   Youden WJ (1950). Cancer, 3(1):32-35.
+#==============================================================================
+
+library(tidyverse)
+library(mice)
+library(pROC)
+library(caret)
+library(car)
+
+cat("\n")
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("CHUNK 13: POST-LR DIAGNOSTICS (MULTIPLY IMPUTED DATA)\n")
+cat("Models: A (Personality) | B (Full) — VSURF interpretation sets\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+#------------------------------------------------------------------------------
+# PART A: LOAD SAVED OBJECTS FROM CHUNK 12
+#------------------------------------------------------------------------------
+
+cat("PART A: Loading Chunk 12 results\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+if (!file.exists("regression_comparison_results.rds"))
+  stop("ERROR: regression_comparison_results.rds not found. Run Chunk 12 first.")
+if (!file.exists("imputed_datasets_complete_final.rds"))
+  stop("ERROR: imputed_datasets_complete_final.rds not found. Run Chunk 9 first.")
+
+ch12         <- readRDS("regression_comparison_results.rds")
+imputed_list <- readRDS("imputed_datasets_complete_final.rds")
+
+outcome_var <- ch12$metadata$outcome
+vars_A      <- ch12$variables$model_A
+vars_B      <- ch12$variables$model_B
+cont_A      <- ch12$variables$cont_A
+cont_B      <- ch12$variables$cont_B
+m           <- ch12$metadata$m
+N           <- ch12$metadata$N
+
+cat(sprintf("✓ Loaded regression_comparison_results.rds\n"))
+cat(sprintf("  Outcome:          %s\n",  outcome_var))
+cat(sprintf("  Imputations (m):  %d\n",  m))
+cat(sprintf("  Observations (N): %d\n",  N))
+cat(sprintf("  Model A predictors (%d): %s\n",
+            length(vars_A), paste(vars_A, collapse = ", ")))
+cat(sprintf("  Model B predictors (%d): %s\n",
+            length(vars_B), paste(vars_B, collapse = ", ")))
+cat(sprintf("  Continuous (A): %s\n",    paste(cont_A, collapse = ", ")))
+cat(sprintf("  Continuous (B): %s\n\n",  paste(cont_B, collapse = ", ")))
+
+cat("Chunk 12 summaries available:\n")
+cat(sprintf("  %s\n\n", paste(names(ch12$summaries), collapse = ", ")))
+
+#------------------------------------------------------------------------------
+# PART B: RE-FIT RAW MODELS ACROSS ALL IMPUTATIONS
+#------------------------------------------------------------------------------
+
+cat("PART B: Re-fitting raw models across all imputations\n")
+cat("───────────────────────────────────────────────────────────────\n\n")
+
+formula_A <- as.formula(paste(outcome_var, "~", paste(vars_A, collapse = " + ")))
+formula_B <- as.formula(paste(outcome_var, "~", paste(vars_B, collapse = " + ")))
+
+cat(sprintf("Formula A: %s\n\n", deparse(formula_A)))
+cat(sprintf("Formula B: %s\n\n", deparse(formula_B)))
+
+fit_raw_list <- function(formula_obj, data_list, label) {
+  lapply(seq_along(data_list), function(i) {
+    tryCatch(
+      glm(formula_obj, data = data_list[[i]], family = binomial()),
+      error = function(e) {
+        cat(sprintf("  ⚠️  %s imputation %d failed: %s\n", label, i, e$message))
+        NULL
+      })
+  })
+}
+
+fits_A <- fit_raw_list(formula_A, imputed_list, "Model A")
+fits_B <- fit_raw_list(formula_B, imputed_list, "Model B")
+
+n_ok_A <- sum(!sapply(fits_A, is.null))
+n_ok_B <- sum(!sapply(fits_B, is.null))
+cat(sprintf("✓ Model A: %d / %d imputations fitted successfully\n",   n_ok_A, m))
+cat(sprintf("✓ Model B: %d / %d imputations fitted successfully\n\n", n_ok_B, m))
+
+#------------------------------------------------------------------------------
+# PART C: NAGELKERKE R² — MANUAL COMPUTATION PER IMPUTATION
+#
+# pool.r.squared() only supports lm objects, not glm. Nagelkerke R² is
+# therefore computed manually per imputed dataset and averaged across
+# imputations. The formula follows Nagelkerke (1991):
+#
+#   Cox-Snell R²  = 1 - exp((ll_null - ll_full) * (2/N))
+#   Max R²        = 1 - exp(ll_null * (2/N))
+#   Nagelkerke R² = Cox-Snell R² / Max R²
+#
+# Averaging R² values across imputations (rather than pooling via Rubin's
+# rules) is an approximation; it is acceptable here because missingness
+# is moderate and the variation in R² across imputations is expected to be
+# small (van Buuren, 2018).
+#
+# References:
+#   Nagelkerke NJD (1991). Biometrika, 78(3):691-692.
+#   van Buuren S (2018). Flexible Imputation of Missing Data. CRC Press.
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART C: Nagelkerke R² (manual computation per imputation)\n")
+cat("Ref: Nagelkerke (1991); van Buuren (2018)\n")
+cat("NOTE: pool.r.squared() not used — does not support GLM objects\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+nagelkerke_manual <- function(fits_list, data_list, outcome_var, label) {
+
+  r2_vals <- sapply(seq_along(fits_list), function(i) {
+    fit <- fits_list[[i]]
+    if (is.null(fit)) return(NA_real_)
+    n        <- nrow(data_list[[i]])
+    ll_full  <- as.numeric(logLik(fit))
+    null_fit <- glm(as.formula(paste(outcome_var, "~ 1")),
+                    data = data_list[[i]], family = binomial())
+    ll_null  <- as.numeric(logLik(null_fit))
+    r2_cox   <- 1 - exp((ll_null - ll_full) * (2 / n))
+    r2_max   <- 1 - exp(ll_null * (2 / n))
+    if (r2_max == 0) return(NA_real_)
+    r2_cox / r2_max
+  })
+
+  valid <- r2_vals[!is.na(r2_vals)]
+  mean_r2 <- mean(valid)
+  sd_r2   <- sd(valid)
+
+  cat(sprintf("%s:\n", label))
+  cat(sprintf("  Nagelkerke pseudo-R² (mean across %d imputations): %.4f\n",
+              length(valid), mean_r2))
+  cat(sprintf("  SD across imputations: %.4f\n", sd_r2))
+  cat(sprintf("  Range: %.4f – %.4f\n\n", min(valid), max(valid)))
+
+  list(mean = mean_r2, sd = sd_r2, min = min(valid),
+       max = max(valid), per_imputation = r2_vals)
+}
+
+r2_A <- nagelkerke_manual(fits_A, imputed_list, outcome_var,
+                           "Model A — Personality")
+r2_B <- nagelkerke_manual(fits_B, imputed_list, outcome_var,
+                           "Model B — Full")
+
+#------------------------------------------------------------------------------
+# PART D: HOSMER-LEMESHOW TEST — MANUAL MI POOLING
+#
+# Chi-square computed per imputation; averaged across imputations.
+# g = 10 decile groups; df = g - 2 = 8.
+# p >= .05 indicates adequate calibration.
+#
+# References:
+#   Hosmer & Lemeshow (2000). Applied Logistic Regression (2nd ed.). Wiley.
+#   Enders CK (2010). Applied Missing Data Analysis. Guilford Press.
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART D: Hosmer-Lemeshow test (mean chi-square across imputations)\n")
+cat("g = 10 decile groups; df = 8\n")
+cat("Ref: Hosmer & Lemeshow (2000); Enders (2010)\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+hl_mi <- function(fits_list, data_list, outcome_var, g = 10, label) {
+
+  mm        <- length(fits_list)
+  chi2_vals <- rep(NA_real_, mm)
+  df_val    <- g - 2L
+
+  for (i in seq_len(mm)) {
+    if (is.null(fits_list[[i]])) next
+    pred <- predict(fits_list[[i]], type = "response")
+    obs  <- as.integer(data_list[[i]][[outcome_var]])
+
+    breaks    <- quantile(pred, probs = seq(0, 1, length.out = g + 1),
+                          na.rm = TRUE)
+    breaks[1] <- breaks[1] - 1e-10
+    groups    <- cut(pred, breaks = breaks, labels = FALSE,
+                     include.lowest = TRUE)
+
+    obs_1  <- tapply(obs,  groups, sum,    na.rm = TRUE)
+    exp_1  <- tapply(pred, groups, sum,    na.rm = TRUE)
+    n_g    <- tapply(obs,  groups, length)
+    obs_0  <- n_g - obs_1
+    exp_0  <- n_g - exp_1
+
+    valid_cells  <- exp_1 > 0 & exp_0 > 0
+    chi2_vals[i] <- sum(
+      ((obs_1 - exp_1)^2 / exp_1 + (obs_0 - exp_0)^2 / exp_0)[valid_cells],
+      na.rm = TRUE)
+  }
+
+  valid     <- !is.na(chi2_vals)
+  chi2_pool <- mean(chi2_vals[valid])
+  p_pool    <- pchisq(chi2_pool, df = df_val, lower.tail = FALSE)
+  n_valid   <- sum(valid)
+
+  cat(sprintf("%s:\n", label))
+  cat(sprintf("  Groups (g):          %d\n",    g))
+  cat(sprintf("  df:                  %d  (g - 2)\n", df_val))
+  cat(sprintf("  Imputations used:    %d / %d\n", n_valid, mm))
+  cat(sprintf("  Pooled chi-square:   %.4f\n",  chi2_pool))
+  cat(sprintf("  p-value:             %.4f  %s\n\n",
+              p_pool,
+              ifelse(p_pool >= 0.05,
+                     "✓ Adequate fit (p >= .05)",
+                     "⚠️  Poor fit (p < .05)")))
+
+  list(chi2 = chi2_pool, df = df_val, p = p_pool,
+       g = g, n_valid = n_valid, chi2_per_imp = chi2_vals)
+}
+
+hl_A <- hl_mi(fits_A, imputed_list, outcome_var, g = 10,
+              "Model A — Personality")
+hl_B <- hl_mi(fits_B, imputed_list, outcome_var, g = 10,
+              "Model B — Full")
+
+#------------------------------------------------------------------------------
+# PART E: CONFUSION MATRIX — YOUDEN-OPTIMAL THRESHOLD
+#
+# Predicted probabilities averaged across all imputations before thresholding.
+# Youden's J = sensitivity + specificity - 1; maximised to find threshold.
+#
+# References:
+#   Youden WJ (1950). Cancer, 3(1):32-35.
+#   Klok et al. (2022). JAMIA. doi:10.1093/jamia/ocac093
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART E: Confusion matrix (Youden-optimal threshold)\n")
+cat("Predicted probabilities averaged across all imputations first.\n")
+cat("Ref: Youden (1950); Klok et al. (2022)\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+pool_predictions <- function(fits_list, data_list) {
+  preds <- lapply(seq_along(fits_list), function(i) {
+    if (is.null(fits_list[[i]])) return(NULL)
+    predict(fits_list[[i]], newdata = data_list[[i]], type = "response")
+  })
+  valid_preds <- Filter(Negate(is.null), preds)
+  Reduce("+", valid_preds) / length(valid_preds)
+}
+
+avg_pred_A <- pool_predictions(fits_A, imputed_list)
+avg_pred_B <- pool_predictions(fits_B, imputed_list)
+observed   <- imputed_list[[1]][[outcome_var]]
+
+run_confusion_matrix <- function(avg_pred, obs, label) {
+  cat(sprintf("%s:\n", label))
+
+  roc_obj     <- roc(obs, avg_pred, quiet = TRUE)
+  best        <- coords(roc_obj, "best",
+                        ret         = c("threshold", "sensitivity", "specificity"),
+                        best.method = "youden",
+                        transpose   = FALSE)
+  best_thresh <- best$threshold[1]
+  auc_val     <- as.numeric(auc(roc_obj))
+
+  cat(sprintf("  AUC (pooled predictions):     %.3f\n",  auc_val))
+  cat(sprintf("  Youden's J optimal threshold: %.4f\n",  best_thresh))
+
+  pred_class <- factor(ifelse(avg_pred >= best_thresh, 1, 0), levels = c(0, 1))
+  obs_factor <- factor(obs, levels = c(0, 1))
+  cm         <- confusionMatrix(pred_class, obs_factor, positive = "1")
+
+  print(cm$table)
+  cat("\n")
+
+  sens <- round(cm$byClass["Sensitivity"],    3)
+  spec <- round(cm$byClass["Specificity"],    3)
+  ppv  <- round(cm$byClass["Pos Pred Value"], 3)
+  npv  <- round(cm$byClass["Neg Pred Value"], 3)
+  acc  <- round(cm$overall["Accuracy"],       3)
+
+  cat(sprintf("  Sensitivity:   %.3f\n", sens))
+  cat(sprintf("  Specificity:   %.3f\n", spec))
+  cat(sprintf("  PPV:           %.3f\n", ppv))
+  cat(sprintf("  NPV:           %.3f\n", npv))
+  cat(sprintf("  Accuracy:      %.3f\n", acc))
+  cat(sprintf("  Threshold:     %.4f (Youden's J)\n\n", best_thresh))
+
+  list(auc = auc_val, threshold = best_thresh,
+       sensitivity = sens, specificity = spec,
+       ppv = ppv, npv = npv, accuracy = acc,
+       cm_table = cm$table, cm_full = cm)
+}
+
+cm_A <- run_confusion_matrix(avg_pred_A, observed, "Model A — Personality")
+cm_B <- run_confusion_matrix(avg_pred_B, observed, "Model B — Full")
+
+#------------------------------------------------------------------------------
+# PART F: BOX-TIDWELL TEST — LINEARITY IN THE LOGIT
+#
+# X * log(X) interaction terms added to model. Significant interaction
+# (after Bonferroni correction) indicates non-linearity.
+# Run on imputation 1 only — standard for assumption checking in MI context.
+# Variables with min <= 0 shifted by +1 before log transformation.
+#
+# References:
+#   Box & Tidwell (1962). Technometrics, 4(4):531-550.
+#   Harrell FE (2015). Regression Modeling Strategies (2nd ed.). Springer.
+#   van Buuren S (2018). Flexible Imputation of Missing Data. CRC Press.
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART F: Box-Tidwell test — linearity in the logit\n")
+cat("Imputation 1 only; Bonferroni correction applied.\n")
+cat("Variables with min <= 0 shifted by +1 before log transformation.\n")
+cat("Ref: Box & Tidwell (1962); Harrell (2015); van Buuren (2018)\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+dat_bt <- imputed_list[[1]]
+
+run_box_tidwell <- function(outcome, all_vars, cont_vars, data, label) {
+  cat(sprintf("%s:\n", label))
+  cat(sprintf("  Continuous predictors tested (%d): %s\n",
+              length(cont_vars), paste(cont_vars, collapse = ", ")))
+
+  bonferroni_alpha <- 0.05 / max(length(cont_vars), 1)
+  cat(sprintf("  Bonferroni-corrected alpha: %.4f (0.05 / %d)\n\n",
+              bonferroni_alpha, length(cont_vars)))
+
+  if (length(cont_vars) == 0) {
+    cat("  No continuous predictors — Box-Tidwell not applicable.\n\n")
+    return(NULL)
+  }
+
+  dat_test  <- data
+  shift_log <- list()
+  for (v in cont_vars) {
+    min_v <- min(dat_test[[v]], na.rm = TRUE)
+    if (min_v <= 0) {
+      shift          <- abs(min_v) + 1
+      dat_test[[v]]  <- dat_test[[v]] + shift
+      shift_log[[v]] <- shift
+      cat(sprintf("  ℹ️  '%s' shifted by +%.2f for log (min <= 0)\n", v, shift))
+    }
+  }
+  if (length(shift_log) > 0) cat("\n")
+
+  bt_terms   <- paste(sprintf("I(%s * log(%s))", cont_vars, cont_vars),
+                      collapse = " + ")
+  bt_formula <- as.formula(
+    paste(outcome, "~", paste(all_vars, collapse = " + "), "+", bt_terms))
+
+  bt_fit <- tryCatch(
+    glm(bt_formula, data = dat_test, family = binomial()),
+    error = function(e) {
+      cat(sprintf("  ✗ Box-Tidwell model failed: %s\n\n", e$message))
+      NULL
+    })
+  if (is.null(bt_fit)) return(NULL)
+
+  coef_tbl <- summary(bt_fit)$coefficients
+  bt_rows  <- grep("log\\(", rownames(coef_tbl))
+
+  if (length(bt_rows) == 0) {
+    cat("  ⚠️  No interaction terms found in model output.\n\n")
+    return(NULL)
+  }
+
+  bt_results <- coef_tbl[bt_rows, , drop = FALSE]
+  bt_df <- data.frame(
+    Term      = rownames(bt_results),
+    Estimate  = round(bt_results[, "Estimate"],   4),
+    SE        = round(bt_results[, "Std. Error"],  4),
+    z_value   = round(bt_results[, "z value"],     3),
+    p_value   = round(bt_results[, "Pr(>|z|)"],    4),
+    stringsAsFactors = FALSE
+  ) %>%
+    mutate(
+      Significant_Bonferroni = p_value < bonferroni_alpha,
+      Interpretation = ifelse(
+        Significant_Bonferroni,
+        "⚠️  NON-LINEAR — consider polynomial or spline",
+        "✓ Linear assumption met"))
+
+  cat("  Box-Tidwell interaction terms (X*log(X)):\n")
+  print(bt_df, row.names = FALSE)
+  cat(sprintf("\n  Bonferroni-corrected alpha: %.4f\n", bonferroni_alpha))
+
+  violations <- bt_df$Term[bt_df$Significant_Bonferroni]
+  if (length(violations) == 0) {
+    cat("  ✓ No violations. Linearity in the logit supported.\n\n")
+  } else {
+    cat(sprintf("  ⚠️  %d violation(s):\n", length(violations)))
+    for (v in violations) cat(sprintf("     • %s\n", v))
+    cat("  Consider polynomial terms or restricted cubic splines.\n\n")
+  }
+
+  list(results = bt_df, alpha_bonferroni = bonferroni_alpha,
+       violations = violations, shifts = shift_log)
+}
+
+bt_A <- run_box_tidwell(outcome_var, vars_A, cont_A, dat_bt,
+                         "Model A — Personality")
+bt_B <- run_box_tidwell(outcome_var, vars_B, cont_B, dat_bt,
+                         "Model B — Full")
+
+#------------------------------------------------------------------------------
+# PART G: CLASS IMBALANCE
+#
+# Report distribution and justify no resampling correction.
+# Ref: Klok et al. (2022). JAMIA. doi:10.1093/jamia/ocac093
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART G: Class imbalance\n")
+cat("Ref: Klok et al. (2022). JAMIA. doi:10.1093/jamia/ocac093\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+outcome_vec <- imputed_list[[1]][[outcome_var]]
+tbl         <- table(outcome_vec)
+prop_tbl    <- prop.table(tbl)
+n_1         <- as.integer(tbl["1"])
+n_0         <- as.integer(tbl["0"])
+ratio       <- max(n_0, n_1) / min(n_0, n_1)
+
+cat(sprintf("  Stoppers   (= 1): %d  (%.1f%%)\n", n_1, 100 * prop_tbl["1"]))
+cat(sprintf("  Continuers (= 0): %d  (%.1f%%)\n", n_0, 100 * prop_tbl["0"]))
+cat(sprintf("  Majority:minority ratio: %.2f : 1\n\n", ratio))
+
+if (ratio >= 3) {
+  cat("⚠️  Imbalance detected (ratio >= 3:1).\n")
+} else {
+  cat("✓ Mild imbalance (ratio < 3:1).\n")
+}
+cat("  No resampling correction applied — Klok et al. (2022) justification.\n")
+cat("  Threshold optimised via Youden's J index (Part E).\n\n")
+
+#------------------------------------------------------------------------------
+# PART H: COMBINED DIAGNOSTIC SUMMARY TABLE
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART H: Diagnostic summary\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+r2_val_A  <- if (!is.null(r2_A)) round(r2_A$mean, 4) else NA
+r2_val_B  <- if (!is.null(r2_B)) round(r2_B$mean, 4) else NA
+hl_chi2_A <- if (!is.null(hl_A)) round(hl_A$chi2, 3) else NA
+hl_p_A    <- if (!is.null(hl_A)) round(hl_A$p,    4) else NA
+hl_chi2_B <- if (!is.null(hl_B)) round(hl_B$chi2, 3) else NA
+hl_p_B    <- if (!is.null(hl_B)) round(hl_B$p,    4) else NA
+bt_viol_A <- if (!is.null(bt_A) && length(bt_A$violations) > 0)
+               paste(bt_A$violations, collapse = "; ") else "None"
+bt_viol_B <- if (!is.null(bt_B) && length(bt_B$violations) > 0)
+               paste(bt_B$violations, collapse = "; ") else "None"
+
+summary_tbl <- data.frame(
+  Diagnostic = c(
+    "Nagelkerke pseudo-R2 (manual mean)",
+    "HL chi-square",
+    "HL p-value",
+    "HL interpretation",
+    "AUC (pooled predictions)",
+    "Optimal threshold (Youden)",
+    "Sensitivity",
+    "Specificity",
+    "PPV",
+    "NPV",
+    "Accuracy",
+    "Box-Tidwell violations",
+    "Class imbalance ratio"),
+  Model_A = c(
+    ifelse(is.na(r2_val_A),  "NA", as.character(r2_val_A)),
+    ifelse(is.na(hl_chi2_A), "NA", as.character(hl_chi2_A)),
+    ifelse(is.na(hl_p_A),    "NA", as.character(hl_p_A)),
+    ifelse(is.na(hl_p_A),    "NA", ifelse(hl_p_A >= 0.05, "Adequate", "Poor")),
+    as.character(round(cm_A$auc,       3)),
+    as.character(round(cm_A$threshold, 4)),
+    as.character(cm_A$sensitivity),
+    as.character(cm_A$specificity),
+    as.character(cm_A$ppv),
+    as.character(cm_A$npv),
+    as.character(cm_A$accuracy),
+    bt_viol_A,
+    sprintf("%.2f:1", ratio)),
+  Model_B = c(
+    ifelse(is.na(r2_val_B),  "NA", as.character(r2_val_B)),
+    ifelse(is.na(hl_chi2_B), "NA", as.character(hl_chi2_B)),
+    ifelse(is.na(hl_p_B),    "NA", as.character(hl_p_B)),
+    ifelse(is.na(hl_p_B),    "NA", ifelse(hl_p_B >= 0.05, "Adequate", "Poor")),
+    as.character(round(cm_B$auc,       3)),
+    as.character(round(cm_B$threshold, 4)),
+    as.character(cm_B$sensitivity),
+    as.character(cm_B$specificity),
+    as.character(cm_B$ppv),
+    as.character(cm_B$npv),
+    as.character(cm_B$accuracy),
+    bt_viol_B,
+    sprintf("%.2f:1", ratio)),
+  stringsAsFactors = FALSE)
+
+print(summary_tbl, row.names = FALSE)
+cat("\n")
+
+#------------------------------------------------------------------------------
+# PART I: SAVE ALL RESULTS
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("PART I: Saving results\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+output_ch13 <- list(
+
+  nagelkerke = list(
+    model_A = r2_A,
+    model_B = r2_B),
+
+  hosmer_lemeshow = list(
+    model_A = hl_A,
+    model_B = hl_B),
+
+  confusion_matrix = list(
+    model_A = cm_A,
+    model_B = cm_B),
+
+  box_tidwell = list(
+    model_A = bt_A,
+    model_B = bt_B),
+
+  class_imbalance = list(
+    table        = tbl,
+    proportions  = prop_tbl,
+    n_stoppers   = n_1,
+    n_continuers = n_0,
+    ratio        = ratio),
+
+  summary_table = summary_tbl,
+
+  metadata = list(
+    outcome           = outcome_var,
+    threshold_method  = "Youden's J index",
+    hl_method         = "Mean chi-square across imputations (g=10, df=8)",
+    nagelkerke_method = "Manual per imputation, averaged (Nagelkerke 1991)",
+    bt_imputation     = 1,
+    bt_note           = "Imputation 1 only — standard for assumption checking",
+    resampling        = "None — Klok et al. (2022) justification",
+    vars_A = vars_A, vars_B = vars_B,
+    cont_A = cont_A, cont_B = cont_B,
+    m = m, N = N,
+    references = c(
+      "Box & Tidwell (1962). Technometrics, 4(4):531-550.",
+      "Enders CK (2010). Applied Missing Data Analysis.",
+      "Harrell FE (2015). Regression Modeling Strategies (2nd ed.).",
+      "Hosmer & Lemeshow (2000). Applied Logistic Regression (2nd ed.).",
+      "Klok et al. (2022). JAMIA. doi:10.1093/jamia/ocac093",
+      "Nagelkerke NJD (1991). Biometrika, 78(3):691-692.",
+      "Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys.",
+      "van Buuren S (2018). Flexible Imputation of Missing Data.",
+      "Youden WJ (1950). Cancer, 3(1):32-35.")))
+
+saveRDS(output_ch13, "chunk13_diagnostics_results.rds")
+write_csv(summary_tbl, "chunk13_diagnostic_summary.csv")
+
+if (!is.null(bt_A) && !is.null(bt_A$results))
+  write_csv(bt_A$results, "chunk13_boxtidwell_A.csv")
+if (!is.null(bt_B) && !is.null(bt_B$results))
+  write_csv(bt_B$results, "chunk13_boxtidwell_B.csv")
+
+cat("✓ Saved: chunk13_diagnostics_results.rds\n")
+cat("✓ Saved: chunk13_diagnostic_summary.csv\n")
+if (!is.null(bt_A) && !is.null(bt_A$results))
+  cat("✓ Saved: chunk13_boxtidwell_A.csv\n")
+if (!is.null(bt_B) && !is.null(bt_B$results))
+  cat("✓ Saved: chunk13_boxtidwell_B.csv\n")
+cat("\n")
+
+#------------------------------------------------------------------------------
+# FINAL SUMMARY
+#------------------------------------------------------------------------------
+
+cat("═══════════════════════════════════════════════════════════════\n")
+cat("CHUNK 13 COMPLETE\n")
+cat("═══════════════════════════════════════════════════════════════\n\n")
+
+cat("DIAGNOSTICS RUN:\n")
+cat("  1. Nagelkerke pseudo-R²   — manual per imputation, averaged\n")
+cat("                              pool.r.squared() not used (GLM not supported)\n")
+cat("  2. Hosmer-Lemeshow        — mean chi-square across imputations\n")
+cat("                              g=10 groups, df=8\n")
+cat("  3. Confusion matrix       — Youden's J optimal threshold\n")
+cat("                              predicted probs averaged across imputations\n")
+cat("  4. Box-Tidwell test       — imputation 1 only; Bonferroni correction\n")
+cat("                              variables with min<=0 shifted by +1\n")
+cat("  5. Class imbalance        — reported; no resampling per Klok (2022)\n\n")
+
+cat("KEY RESULTS:\n")
+cat(sprintf("  Nagelkerke R²:  A=%.4f  B=%.4f\n",
+            ifelse(is.na(r2_val_A), NA, r2_val_A),
+            ifelse(is.na(r2_val_B), NA, r2_val_B)))
+cat(sprintf("  HL chi-square:  A=%.3f  B=%.3f\n",
+            ifelse(is.na(hl_chi2_A), NA, hl_chi2_A),
+            ifelse(is.na(hl_chi2_B), NA, hl_chi2_B)))
+cat(sprintf("  HL p-value:     A=%.4f (%s)  B=%.4f (%s)\n",
+            ifelse(is.na(hl_p_A), NA, hl_p_A),
+            ifelse(is.na(hl_p_A), "NA", ifelse(hl_p_A >= 0.05, "Adequate", "Poor")),
+            ifelse(is.na(hl_p_B), NA, hl_p_B),
+            ifelse(is.na(hl_p_B), "NA", ifelse(hl_p_B >= 0.05, "Adequate", "Poor"))))
+cat(sprintf("  AUC:            A=%.3f  B=%.3f\n",
+            cm_A$auc, cm_B$auc))
+cat(sprintf("  Threshold:      A=%.4f  B=%.4f (Youden's J)\n",
+            cm_A$threshold, cm_B$threshold))
+cat(sprintf("  Sensitivity:    A=%.3f  B=%.3f\n",
+            cm_A$sensitivity, cm_B$sensitivity))
+cat(sprintf("  Specificity:    A=%.3f  B=%.3f\n",
+            cm_A$specificity, cm_B$specificity))
+cat(sprintf("  PPV:            A=%.3f  B=%.3f\n",
+            cm_A$ppv, cm_B$ppv))
+cat(sprintf("  NPV:            A=%.3f  B=%.3f\n",
+            cm_A$npv, cm_B$npv))
+cat(sprintf("  Box-Tidwell:    A=%s  B=%s\n",
+            bt_viol_A, bt_viol_B))
+cat(sprintf("  Imbalance:      %.2f:1\n\n", ratio))
+
+cat("FILES CREATED:\n")
+cat("  1. chunk13_diagnostics_results.rds\n")
+cat("  2. chunk13_diagnostic_summary.csv\n")
+cat("  3. chunk13_boxtidwell_A.csv  (if violations found)\n")
+cat("  4. chunk13_boxtidwell_B.csv  (if violations found)\n\n")
+
+cat("REFERENCES:\n")
+cat("  Box & Tidwell (1962). Technometrics, 4(4):531-550.\n")
+cat("  Enders CK (2010). Applied Missing Data Analysis.\n")
+cat("  Harrell FE (2015). Regression Modeling Strategies (2nd ed.).\n")
+cat("  Hosmer & Lemeshow (2000). Applied Logistic Regression (2nd ed.).\n")
+cat("  Klok et al. (2022). JAMIA. doi:10.1093/jamia/ocac093\n")
+cat("  Nagelkerke NJD (1991). Biometrika, 78(3):691-692.\n")
+cat("  Rubin DB (1987). Multiple Imputation for Nonresponse in Surveys.\n")
+cat("  van Buuren S (2018). Flexible Imputation of Missing Data.\n")
+cat("  Youden WJ (1950). Cancer, 3(1):32-35.\n\n")
+
+cat("✓ Ready for Chunk 14: influential cases analysis\n\n")
+```
 
 
 
@@ -11409,7 +12031,7 @@ cat("✓ Ready for Chunk 15\n\n")
 #
 #   QUESTION 1 — Influence mechanism: subgroup or outlier?
 #     Both models had influential cases with very high discontinuation rates
-#     (Model A: 91.3%, Model B: 86.7%), but their scenario classifications
+#     (Model A: 95.7%, Model B: 74.2%), but their scenario classifications
 #     differ in specificity:
 #
 #     Model A (Scenario 1 — coherent clinical subgroup, 5/6 predictors
@@ -12014,7 +12636,7 @@ fits_clean_B <- lapply(seq_len(m), function(i) {
 res_clean_B <- pool_glm_manual(fits_clean_B, focus_terms)
 
 # Full model reference (from Chunk 12 saved results)
-full_ref <- chunk12$summaries$model_B %>%
+full_ref <- chunk12$summaries$model_B_raw %>%
   filter(term %in% focus_terms) %>%
   select(term, OR_CI_full = OR_CI)
 
