@@ -134,18 +134,18 @@ cat("✓ Saved: sample_exclusion_flowchart.csv\n\n")
 ```
 
 
-## Personality Missingness
+## Psychological Individual Differences Missingness
 ```{r}
 #==============================================================================
 # CHUNK 4: EARLY DROPOUT DIAGNOSTICS
 #==============================================================================
-# Purpose: Identify participants who dropped out before completing personality
+# Purpose: Identify participants who dropped out before completing psychological individual differences
 #          scales, and test whether dropouts differ from completers on observed
 #          pre-dropout variables.
 #
-# Key assumption: DBAS is the first personality scale in survey order.
+# Key assumption: DBAS is the first psychological individual differences scale in survey order.
 #   Confirmed via Step 0: all participants missing dbas1 are missing the
-#   entire personality block (100% across all scales).
+#   entire psychological individual differences block (100% across all scales).
 #==============================================================================
 
 cat("\n")
@@ -179,7 +179,7 @@ cat(sprintf(
   "  dbas1 confirmed as dropout proxy: %d participants missing dbas1 are\n",
   dropout_check$n_missing_dbas1))
 cat(sprintf(
-  "  also missing the rest of the personality block (dbas_16 %.1f%%, surps1 %.1f%%, ciss1 %.1f%%, BFI %.1f%%)\n\n",
+  "  also missing the rest of the psychological individual differences block (dbas_16 %.1f%%, surps1 %.1f%%, ciss1 %.1f%%, BFI %.1f%%)\n\n",
   dropout_check$pct_also_missing_dbas16, dropout_check$pct_also_missing_surps1,
   dropout_check$pct_also_missing_ciss1, dropout_check$pct_also_missing_bfi))
 
@@ -195,7 +195,7 @@ SIMOA <- SIMOA %>%
     dropout_before_personality = ifelse(is.na(dbas1), 1, 0)
   )
 
-cat("Dropout before personality section:\n")
+cat("Dropout before psychological individual differences section:\n")
 print(table(SIMOA$dropout_before_personality, useNA = "ifany"))
 cat(sprintf("\n  Dropouts:   %d (%.1f%%)\n",
             sum(SIMOA$dropout_before_personality == 1),
@@ -506,7 +506,7 @@ cat("═════════════════════════
 #   D. Recode fall2 (NA→0), sleep aids (NA→0), c_lengthofuse, alc_use
 #   E. Health condition counts
 #   F. Process gen_health
-#   G. Personality reverse coding
+#   G. Psychological Individual Differences reverse coding
 #   H. Variable selection
 #   I. Variable inventory
 #   J. Save
@@ -1499,11 +1499,11 @@ if ("gen_health" %in% names(SIMOA)) {
 }
 
 # =============================================================================
-# PART G: PERSONALITY REVERSE CODING
+# PART G: PSYCHOLOGICAL INDIVIDUAL DIFFERENCES REVERSE CODING
 # =============================================================================
 
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("PART G: PERSONALITY REVERSE CODING\n")
+cat("PART G: PSYCHOLOGICAL INDIVIDUAL DIFFERENCES REVERSE CODING\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 reverse_items <- function(data, items, max_val, scale_name) {
@@ -1700,10 +1700,10 @@ var_inventory$Domain <- dplyr::case_when(
   var_inventory$Variable %in% desires_items                ~ "COM-B: Desires",
   var_inventory$Variable %in% hcp_items                    ~ "COM-B: HCP Influence",
   var_inventory$Variable %in% withdrawal_vars              ~ "Clinical: Withdrawal",
-  var_inventory$Variable %in% dbas_items                   ~ "Personality: DBAS",
-  var_inventory$Variable %in% bfi_items_scored             ~ "Personality: BFI",
-  var_inventory$Variable %in% surps_items_scored           ~ "Personality: SURPS",
-  var_inventory$Variable %in% ciss_items                   ~ "Personality: CISS",
+  var_inventory$Variable %in% dbas_items                   ~ "Psychological Individual Differences: DBAS",
+  var_inventory$Variable %in% bfi_items_scored             ~ "Psychological Individual Differences: BFI",
+  var_inventory$Variable %in% surps_items_scored           ~ "Psychological Individual Differences: SURPS",
+  var_inventory$Variable %in% ciss_items                   ~ "Psychological Individual Differences: CISS",
   TRUE                                                      ~ "Other"
 )
 
@@ -2338,7 +2338,7 @@ cat(sprintf("  Continuous / PMM (numeric + Likert): %d variables\n",
             length(continuous_vars)))
 cat(sprintf("    Of which Likert belief/COM-B items: %d\n",
             sum(likert_items %in% continuous_vars)))
-cat(sprintf("    Of which personality scale items:  %d\n",
+cat(sprintf("    Of which psychological individual differences scale items:  %d\n",
             sum(c(analysis_vars$dbas, analysis_vars$bfi,
                   analysis_vars$surps, analysis_vars$ciss) %in%
                   continuous_vars)))
@@ -2363,8 +2363,8 @@ cat(sprintf("  Total assigned:                      %d\n\n",
               length(ordered_vars) + length(polr_unordered_vars) +
               length(unordered_categorical) + 1L))
 
-# ── Force all Likert and personality items to numeric ─────────────────────────
-cat("FORCING LIKERT AND PERSONALITY ITEMS TO NUMERIC:\n")
+# ── Force all Likert and psychological individual differences items to numeric ─────────────────────────
+cat("FORCING LIKERT AND PSYCHOLOGICAL INDIVIDUAL DIFFERENCES ITEMS TO NUMERIC:\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  Rationale: Likert items treated as continuous (PMM).\n")
 cat("  Forcing to integer prevents accidental ordered-factor encoding\n")
@@ -3241,7 +3241,7 @@ cat("═════════════════════════
 #       belief/COM-B Likert items (benefit_1/4/5/6, side_effects_1:4,
 #       adls_1:2, dependence_1:3, motivation_1:3, capability_1/capability,
 #       desires_1:2, inf_hcp_1/3),
-#       DBAS, BFI, SURPS, CISS personality scale items
+#       DBAS, BFI, SURPS, CISS psychological individual differences scale items
 #   Logreg (1):   sex
 #   Polr (ordered factors):
 #       education, income, employment, driving_freq, gen_health, fall2,
@@ -3324,7 +3324,7 @@ cat("  Variables to impute:      ", imp_params$n_vars_to_impute, "\n")
 cat("  Avg predictors/model:      22.3 (mincor=0.07, minpuc=0.10)\n")
 cat("  Imputation methods:\n")
 cat("    • PMM:     ", sum(imp_params$method == "pmm"),
-    "vars (continuous + all Likert/COM-B + personality scale items)\n")
+    "vars (continuous + all Likert/COM-B + psychological individual differences scale items)\n")
 cat("    • Logreg:  ", sum(imp_params$method == "logreg"),
     "vars (sex)\n")
 cat("    • Polr:    ", sum(imp_params$method == "polr"),
@@ -3616,7 +3616,7 @@ cat("D2. Range preservation check (PMM variables)\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  PURPOSE: PMM imputes by matching observed donors, so imputed\n")
 cat("           values MUST lie within the observed range.\n")
-cat("  Applies to all continuous, Likert/COM-B, and personality scale\n")
+cat("  Applies to all continuous, Likert/COM-B, and psychological individual differences scale\n")
 cat("  items assigned method = 'pmm'.\n\n")
 
 pmm_vars <- names(imp_params$method[imp_params$method == "pmm"])
@@ -3679,7 +3679,7 @@ cat("─────────────────────────
 cat("  PURPOSE: Under MAR the imputed and observed distributions\n")
 cat("           should be broadly similar. Large |SMD| > 0.5 flags\n")
 cat("           potential MNAR bias or miscoded variables.\n")
-cat("  NOTE: Personality scale items (CISS, SURPS, DBAS, BFI) account\n")
+cat("  NOTE: Psychological Individual Differences scale items (CISS, SURPS, DBAS, BFI) account\n")
 cat("        for most of the missingness. Moderate |SMD| for these is\n")
 cat("        expected if missingness is related to trait levels.\n\n")
 
@@ -4240,7 +4240,7 @@ cat("\n")
 # CHUNK 9: POST-IMPUTATION PROCESSING
 #==============================================================================
 # Purpose:
-#   1. Create validated personality subscales using already-reversed items
+#   1. Create validated psychological individual differences subscales using already-reversed items
 #   2. Create composite variables (deferred from Chunk 5+6)
 #   3. Create binary outcome variable (stopped_bzra) from freq_dich
 #   4. Calculate reliability metrics
@@ -4290,7 +4290,7 @@ cat("\n")
 #
 # NOTE ON IMPUTATION METHODS (from Chunk 8):
 #   PMM:     All continuous variables + all Likert/COM-B items +
-#            personality scale items (DBAS, BFI, SURPS, CISS)
+#            psychological individual differences scale items (DBAS, BFI, SURPS, CISS)
 #   Logreg:  sex
 #   Polr:    education, income, employment, driving_freq, gen_health,
 #            fall2, alc_use, sleep_aids items
@@ -5287,7 +5287,7 @@ cat("     → Imputation 1 for visual inspection\n\n")
 #   3. Individual Likert items (benefit_1, side_effects_1, etc.) removed
 #      from variable list — composites (benefitsC, etc.) used instead
 #      (created in Chunk 9 Part B2).
-#   4. DBAS_Total removed from personality vector — subscales only reported
+#   4. DBAS_Total removed from psychological individual differences vector — subscales only reported
 #      for descriptives (DBAS_Consequences, DBAS_Worry_Helplessness,
 #      DBAS_Expectations, DBAS_Medications).
 #   5. Recode function cleaned — individual Likert item numeric coercions
@@ -5519,11 +5519,11 @@ recode_dataset <- function(df) {
                           labels = sleep_aid_labels, ordered = TRUE)
   }
 
-  # ── Personality subscales and composites — ensure numeric ───────────────────
+  # ── Psychological Individual Differences subscales and composites — ensure numeric ───────────────────
   # These are rowMeans() outputs from Chunk 9 and should already be numeric.
   # Coercion is a safety net only.
   numeric_vars <- c(
-    # Personality subscales
+    # Psychological Individual Differences subscales
     "BFI_Extraversion", "BFI_Agreeableness", "BFI_Conscientiousness",
     "BFI_Neuroticism", "BFI_Openness",
     "SURPS_Hopelessness", "SURPS_Impulsivity",
@@ -5613,7 +5613,7 @@ get_family <- function(var) {
     var %in% clinical      ~ "Clinical",
     var %in% sleep_adverse ~ "Sleep_Adverse",
     var %in% beliefs_comob ~ "Beliefs_COMB",
-    var %in% personality   ~ "Personality",
+    var %in% personality   ~ "Psychological_Individual_Differences",
     TRUE                   ~ "Other"
   )
 }
@@ -5640,7 +5640,7 @@ if (length(missing_subscales) > 0) {
   for (v in missing_subscales) cat("  •", v, "\n")
   cat("\n")
 } else {
-  cat(sprintf("✓ All %d personality subscales present\n", length(expected_personality)))
+  cat(sprintf("✓ All %d psychological individual differences subscales present\n", length(expected_personality)))
 }
 
 expected_composites <- c("benefitsC", "side_effectsC", "adlsC", "dependenceC",
@@ -5659,7 +5659,7 @@ cat(sprintf("  Demographics:   %d  |  Clinical:      %d\n",
             sum(all_vars %in% demographics), sum(all_vars %in% clinical)))
 cat(sprintf("  Sleep/Adverse:  %d  |  Beliefs/COM-B: %d\n",
             sum(all_vars %in% sleep_adverse), sum(all_vars %in% beliefs_comob)))
-cat(sprintf("  Personality:    %d  |  Total:         %d\n\n",
+cat(sprintf("  Psychological Individual Differences:    %d  |  Total:         %d\n\n",
             sum(all_vars %in% personality), length(all_vars)))
 
 #==============================================================================
@@ -6044,7 +6044,7 @@ cat("        'No withdrawal' | 'Insomnia only' | 'Other withdrawal symptoms'\n")
 cat("  NOTE: fall2 has 4 levels (0=No fall, 1=Minor, 2=Serious, 3=Fall no injury)\n")
 cat("  NOTE: Sleep aid variables shown with full level breakdown\n")
 cat("        (sparsity assessed; retained as ordered factors, not collapsed).\n")
-cat("  NOTE: Personality reported at subscale level (DBAS_Total excluded).\n")
+cat("  NOTE: Psychological Individual Differences reported at subscale level (DBAS_Total excluded).\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 print_table <- display_table %>%
@@ -6272,7 +6272,7 @@ cat("positive values indicate higher scores in the stopper group. For categorica
 cat("variables, pooled proportions are reported as n (%); differences were tested\n")
 cat("using mean pooled chi-square statistics (Enders, 2010); effect sizes are\n")
 cat("Cramer's V with direction inferred from level percentages.\n\n")
-cat("Personality and COM-B constructs are reported at the subscale/composite\n")
+cat("Psychological Individual Differences and COM-B constructs are reported at the subscale/composite\n")
 cat("level (DBAS subscales: Consequences, Worry/Helplessness, Expectations,\n")
 cat("Medications; BFI subscales: Extraversion, Agreeableness, Conscientiousness,\n")
 cat("Neuroticism, Openness; SURPS subscales: Hopelessness, Impulsivity,\n")
@@ -6293,7 +6293,7 @@ cat("FDR correction (Benjamini & Hochberg, 1995) was applied within five variabl
 cat(sprintf("families: demographics (k=%d), clinical (k=%d), sleep/adverse effects (k=%d),\n",
             sum(all_vars %in% demographics), sum(all_vars %in% clinical),
             sum(all_vars %in% sleep_adverse)))
-cat(sprintf("beliefs/COM-B composites (k=%d), and personality subscales (k=%d).\n\n",
+cat(sprintf("beliefs/COM-B composites (k=%d), and psychological individual differences subscales (k=%d).\n\n",
             sum(all_vars %in% beliefs_comob), sum(all_vars %in% personality)))
 
 #==============================================================================
@@ -6350,10 +6350,10 @@ cat("  Cohen, J. (1988). Statistical Power Analysis (2nd ed.).\n\n")
 ## PERS VSURF
 ```{r}
 #==============================================================================
-# CHUNK 11A: VSURF VARIABLE SELECTION (PERSONALITY PREDICTORS)
+# CHUNK 11A: VSURF VARIABLE SELECTION (PSYCHOLOGICAL INDIVIDUAL DIFFERENCES PREDICTORS)
 #==============================================================================
 # Purpose:
-#   Select important personality variables for BZRA discontinuation using
+#   Select important psychological individual differences variables for BZRA discontinuation using
 #   VSURF applied separately to each imputed dataset.
 #   Variables are retained if selected in ≥ 10 runs (≥ 25% of imputations),
 #   applied uniformly to threshold, interpretation, and prediction sets.
@@ -6363,7 +6363,7 @@ cat("  Cohen, J. (1988). Statistical Power Analysis (2nd ed.).\n\n")
 #       stopped_bzra = 1 : freq_dich 0 (stopped) or 1 (rare use)  → STOPPERS
 #       stopped_bzra = 0 : freq_dich 2 (continues regular use)     → CONTINUERS
 #   - stopped_bzra is used directly — NOT re-derived from freq_dich here.
-#   - Personality variable set: identical to Chunk 10 personality block,
+#   - Psychological Individual Differences variable set: identical to Chunk 10 psychological individual differences block,
 #     with DBAS_Total explicitly excluded (collinear with subscales).
 #   - Labels: "Stoppers" vs "Continuers" consistent with Chunks 10.
 #
@@ -6395,7 +6395,7 @@ library(ggplot2)
 
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("CHUNK 11A: VSURF VARIABLE SELECTION (PERSONALITY)\n")
+cat("CHUNK 11A: VSURF VARIABLE SELECTION (PSYCHOLOGICAL INDIVIDUAL DIFFERENCES)\n")
 cat("MI-appropriate: majority vote across all imputations\n")
 cat("Outcome: stopped_bzra (from Chunk 9 Part B3)\n")
 cat("Threshold: >= 25% of imputations (applied to all VSURF sets)\n")
@@ -6458,13 +6458,13 @@ n_events <- n_stoppers
 cat(sprintf("Events for EPV calculations: %d (stoppers)\n\n", n_events))
 
 #------------------------------------------------------------------------------
-# PERSONALITY VARIABLE SET
-# Identical to Chunk 10 personality block.
+# PSYCHOLOGICAL INDIVIDUAL DIFFERENCES VARIABLE SET
+# Identical to Chunk 10 psychological individual differences block.
 # DBAS_Total explicitly excluded: collinear with subscales.
 #------------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("PERSONALITY VARIABLE SET\n")
+cat("PSYCHOLOGICAL INDIVIDUAL DIFFERENCES VARIABLE SET\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 personality_vars <- c(
@@ -6485,7 +6485,7 @@ personality_vars <- c(
   "CISS_Task", "CISS_Emotion", "CISS_Avoidance"
 )
 
-cat(sprintf("Total personality variables: %d\n", length(personality_vars)))
+cat(sprintf("Total psychological individual differences variables: %d\n", length(personality_vars)))
 cat("  BFI-10 (5): Extraversion, Agreeableness, Conscientiousness, Neuroticism, Openness\n")
 cat("  SURPS  (4): Impulsivity, Sensation_Seeking, Hopelessness, Anxiety_Sensitivity\n")
 cat("  DBAS   (4): Consequences, Worry_Helplessness, Expectations, Medications\n")
@@ -6496,9 +6496,9 @@ missing_vars <- personality_vars[!personality_vars %in% names(d1)]
 if (length(missing_vars) > 0) {
   cat("✗ MISSING variables (check Chunk 9):\n")
   for (v in missing_vars) cat("  •", v, "\n")
-  stop("Cannot proceed — personality subscales missing from imputed data.")
+  stop("Cannot proceed — psychological individual differences subscales missing from imputed data.")
 } else {
-  cat(sprintf("✓ All %d personality variables confirmed in imputed data\n\n",
+  cat(sprintf("✓ All %d psychological individual differences variables confirmed in imputed data\n\n",
               length(personality_vars)))
 }
 
@@ -6559,7 +6559,7 @@ for (i in seq_len(m)) {
 
   df <- all_datasets[[i]]
 
-  # Predictor matrix — personality vars only, all numeric
+  # Predictor matrix — psychological individual differences vars only, all numeric
   X <- as.data.frame(lapply(df[, personality_vars, drop = FALSE], as.numeric))
 
   # Outcome — stopped_bzra as factor, from Chunk 9 directly
@@ -6713,7 +6713,7 @@ if (length(majority_pred) > 0) {
 #------------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("SELECTION BY PERSONALITY DOMAIN\n")
+cat("SELECTION BY PSYCHOLOGICAL INDIVIDUAL DIFFERENCES DOMAIN\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 get_domain <- function(vars) {
@@ -6777,7 +6777,7 @@ p1 <- ggplot(plot_data,
   coord_flip() +
   scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
   labs(
-    title    = "Variable Importance — Personality Predictors of BZRA Discontinuation",
+    title    = "Variable Importance — Psychological Individual Differences Predictors of BZRA Discontinuation",
     subtitle = sprintf(
       "VSURF majority vote across %d imputations  |  Stoppers (n=%d) vs Continuers (n=%d)  |  Prediction set: %d variable(s)",
       m, n_stoppers, n_continuers, length(majority_pred)),
@@ -6931,7 +6931,7 @@ if (length(majority_pred) > 0) {
               max(majority_threshold - 2L, 1L)))
 }
 
-cat("\n✓ Ready for Chunk 12A: logistic regression (personality model)\n\n")
+cat("\n✓ Ready for Chunk 12A: logistic regression (psychological individual differences model)\n\n")
 
 cat("FILES CREATED:\n")
 cat("  1. VSURF_personality_results.rds\n")
@@ -6965,7 +6965,7 @@ cat("  Cohen, J. (1988). Statistical Power Analysis (2nd ed.).\n\n")
 # Purpose:
 #   Select important predictors of BZRA discontinuation from the full candidate
 #   set, covering demographics, clinical, sleep/adverse effects, behavioural,
-#   and personality domains.
+#   and psychological individual differences domains.
 #
 # Alignment with Chunk 10:
 #   - Outcome: stopped_bzra (loaded directly from Chunk 9 via imputed datasets,
@@ -6973,7 +6973,7 @@ cat("  Cohen, J. (1988). Statistical Power Analysis (2nd ed.).\n\n")
 #       stopped_bzra = 1 : Stoppers/rare users (freq_dich 0 or 1)
 #       stopped_bzra = 0 : Continuers (freq_dich 2, regular use)
 #   - Variable sets: identical to Chunk 10 domain definitions
-#       demographics, clinical, sleep_adverse, beliefs_comob, personality
+#       demographics, clinical, sleep_adverse, beliefs_comob, psychological individual differences
 #   - stop_wdl_exp_combined included in sleep_adverse (matches Chunk 10);
 #       wdl_symptom_count also retained.
 #   - COM-B composites (benefitsC, side_effectsC, adlsC, dependenceC,
@@ -7181,7 +7181,7 @@ recode_dataset <- function(df) {
     if (var %in% names(df) && !is.numeric(df[[var]]))
       df[[var]] <- as.numeric(as.character(df[[var]]))
 
-  # ── Personality subscales ────────────────────────────────────────────────────
+  # ── Psychological Individual Differences subscales ────────────────────────────────────────────────────
   personality_numeric_vars <- c(
     "BFI_Extraversion", "BFI_Agreeableness", "BFI_Conscientiousness",
     "BFI_Neuroticism", "BFI_Openness",
@@ -7278,7 +7278,7 @@ beliefs_comob <- c(
   "motivationC", "capabilityC", "pharmacistC", "prescriberC"
 )
 
-# ── Personality subscales — identical to Chunk 10 ────────────────────────────
+# ── Psychological Individual Differences subscales — identical to Chunk 10 ────────────────────────────
 # DBAS_Total excluded — collinear with subscales (consistent with Chunk 10)
 personality <- c(
   "BFI_Extraversion", "BFI_Agreeableness", "BFI_Conscientiousness",
@@ -7301,7 +7301,7 @@ get_family <- function(var) {
     var %in% clinical      ~ "Clinical",
     var %in% sleep_adverse ~ "Sleep_Adverse",
     var %in% beliefs_comob ~ "Beliefs_COMB",
-    var %in% personality   ~ "Personality",
+    var %in% personality   ~ "Psychological_Individual_Differences",
     TRUE                   ~ "Other"
   )
 }
@@ -7318,9 +7318,9 @@ cat(sprintf("Sleep/Adverse  (%2d): %s\n",
 cat(sprintf("Beliefs/COM-B  (%2d): %s\n",
             sum(all_vars %in% beliefs_comob),
             paste(all_vars[all_vars %in% beliefs_comob], collapse = ", ")))
-cat(sprintf("Personality    (%2d): %s\n",
-            sum(all_vars %in% personality),
-            paste(all_vars[all_vars %in% personality], collapse = ", ")))
+cat(sprintf("Psychological Individual Differences    (%2d): %s\n",
+            sum(all_vars %in% psychological individual differences),
+            paste(all_vars[all_vars %in% psychological individual differences], collapse = ", ")))
 cat(sprintf("\nTotal candidate predictors (after availability check): %d\n",
             length(all_vars)))
 cat("DBAS_Total excluded (collinear with subscales)\n")
@@ -7599,7 +7599,7 @@ domain_totals <- c(
   Clinical      = sum(all_vars %in% clinical),
   Sleep_Adverse = sum(all_vars %in% sleep_adverse),
   Beliefs_COMB  = sum(all_vars %in% beliefs_comob),
-  Personality   = sum(all_vars %in% personality)
+  Psychological_Individual_Differences = sum(all_vars %in% personality)
 )
 
 if (length(majority_pred) > 0) {
@@ -7632,11 +7632,11 @@ if (length(majority_pred) > 0) {
 }
 
 #------------------------------------------------------------------------------
-# COMPARE WITH PERSONALITY-ONLY MODEL (11A)
+# COMPARE WITH PSYCHOLOGICAL INDIVIDUAL DIFFERENCES-ONLY MODEL (11A)
 #------------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
-cat("COMPARISON WITH PERSONALITY-ONLY MODEL (CHUNK 11A)\n")
+cat("COMPARISON WITH PSYCHOLOGICAL INDIVIDUAL DIFFERENCES-ONLY MODEL (CHUNK 11A)\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 if (file.exists("VSURF_personality_selected.rds")) {
@@ -7646,11 +7646,11 @@ if (file.exists("VSURF_personality_selected.rds")) {
   only_full <- setdiff(majority_pred,   pers_pred)
   only_pers <- setdiff(pers_pred,       majority_pred)
 
-  cat(sprintf("Personality model prediction set (11A): %d variables\n", length(pers_pred)))
+  cat(sprintf("Psychological Individual Differences model prediction set (11A): %d variables\n", length(pers_pred)))
   cat(sprintf("Full model prediction set (11B):        %d variables\n", length(majority_pred)))
   cat(sprintf("In both:                                %d variables\n", length(in_both)))
   cat(sprintf("Only in full model:                     %d variables\n", length(only_full)))
-  cat(sprintf("Only in personality model:              %d variables\n\n", length(only_pers)))
+  cat(sprintf("Only in psychological individual differences model:              %d variables\n\n", length(only_pers)))
 
   if (length(in_both) > 0) {
     cat("Shared variables:\n")
@@ -7663,7 +7663,7 @@ if (file.exists("VSURF_personality_selected.rds")) {
     cat("\n")
   }
   if (length(only_pers) > 0) {
-    cat("In personality model but dropped by full model:\n")
+    cat("In psychological individual differences model but dropped by full model:\n")
     for (v in only_pers) cat(sprintf("  • %-35s [%s]\n", v, get_family(v)))
     cat("\n")
   }
@@ -7942,11 +7942,11 @@ cat("✓ Saved: VSURF_full_importance_ALL.png\n\n")
 ## LR
 ```{r}
 #==============================================================================
-# CHUNK 12: LOGISTIC REGRESSION — PERSONALITY vs FULL MODEL + DELONG'S TEST
+# CHUNK 12: LOGISTIC REGRESSION — PSYCHOLOGICAL INDIVIDUAL DIFFERENCES vs FULL MODEL + DELONG'S TEST
 #==============================================================================
 # Purpose:
 #   Fit two logistic regression models using VSURF interpretation sets:
-#     Model A — Personality-only predictors (from Chunk 11A)
+#     Model A — Psychological Individual Differences-only predictors (from Chunk 11A)
 #     Model B — Full predictor set (from Chunk 11B)
 #   Compare discriminative ability using DeLong's test.
 #   Both raw and standardized (mean=0, SD=1) versions are fitted for
@@ -8019,7 +8019,7 @@ library(car)
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("CHUNK 12: LOGISTIC REGRESSION + DELONG'S TEST\n")
-cat("Personality (11A) vs Full model (11B)\n")
+cat("Psychological Individual Differences (11A) vs Full model (11B)\n")
 cat("Both models use VSURF INTERPRETATION set (Step 2)\n")
 cat("Both RAW and STANDARDIZED coefficient versions fitted\n")
 cat("Outcome: stopped_bzra (from Chunk 9 Part B3)\n")
@@ -8082,7 +8082,7 @@ if (length(vars_A) == 0)
 if (length(vars_B) == 0)
   stop("Model B: VSURF interpretation set is empty. Review Chunk 11B.")
 
-cat(sprintf("Model A — Personality VSURF interpretation set (%d variables):\n",
+cat(sprintf("Model A — Psychological Individual Differences VSURF interpretation set (%d variables):\n",
             length(vars_A)))
 for (v in vars_A) cat(sprintf("  • %s\n", v))
 cat(sprintf("  [Prediction set (%d): %s]\n\n",
@@ -8275,14 +8275,14 @@ pool_and_summarise <- function(fits_list, model_label) {
   list(pooled = pooled, summary = smry)
 }
 
-results_A_raw <- pool_and_summarise(fits_A_raw, "Model A — Personality (raw)")
-results_A_std <- pool_and_summarise(fits_A_std, "Model A — Personality (standardized)")
+results_A_raw <- pool_and_summarise(fits_A_raw, "Model A — Psychological Individual Differences (raw)")
+results_A_std <- pool_and_summarise(fits_A_std, "Model A — Psychological Individual Differences (standardized)")
 results_B_raw <- pool_and_summarise(fits_B_raw, "Model B — Full (raw)")
 results_B_std <- pool_and_summarise(fits_B_std, "Model B — Full (standardized)")
 
 # ── Print side-by-side for Model A ───────────────────────────────────────────
 cat("══════════════════════════════════════════════════════════════\n")
-cat("MODEL A — Personality\n")
+cat("MODEL A — Psychological Individual Differences\n")
 cat("══════════════════════════════════════════════════════════════\n\n")
 
 cat("RAW SCORES (OR per 1-unit increase in original units):\n")
@@ -8402,12 +8402,12 @@ calc_auc_mi <- function(fits_list, data_list, label, boot.n = 2000) {
 }
 
 set.seed(42)
-auc_A <- calc_auc_mi(fits_A_raw, imputed_list, "Model A (Personality)")
+auc_A <- calc_auc_mi(fits_A_raw, imputed_list, "Model A (Psychological Individual Differences)")
 auc_B <- calc_auc_mi(fits_B_raw, imputed_list, "Model B (Full)")
 
 cat("\n")
 cat("AUC SUMMARY (mean ± mean bootstrap CI across imputations):\n")
-cat(sprintf("  Model A (Personality): %s\n", auc_A$AUC_formatted))
+cat(sprintf("  Model A (Psychological Individual Differences): %s\n", auc_A$AUC_formatted))
 cat(sprintf("  Model B (Full):        %s\n\n", auc_B$AUC_formatted))
 
 #------------------------------------------------------------------------------
@@ -8491,7 +8491,7 @@ cat(sprintf("  p-value (normal approx.):    %.4f%s\n", p_pool,
 cat(sprintf("  p-value (t, df=%.1f):        %.4f\n",  df_BR, p_pool_t))
 
 if (p_pool < 0.05) {
-  winner <- ifelse(Q_bar > 0, "Model B (Full)", "Model A (Personality)")
+  winner <- ifelse(Q_bar > 0, "Model B (Full)", "Model A (Psychological Individual Differences)")
   cat(sprintf("\n  ✓ Significant difference: %s has higher AUC.\n", winner))
 } else {
   cat("\n  Models do not differ significantly in AUC (p ≥ 0.05).\n")
@@ -8541,7 +8541,7 @@ run_diagnostics <- function(formula_obj, data, label) {
   invisible(fit)
 }
 
-run_diagnostics(formula_A, imputed_list[[1]], "MODEL A — Personality (raw)")
+run_diagnostics(formula_A, imputed_list[[1]], "MODEL A — Psychological Individual Differences (raw)")
 run_diagnostics(formula_B, imputed_list[[1]], "MODEL B — Full (raw)")
 
 #------------------------------------------------------------------------------
@@ -8554,7 +8554,7 @@ cat("═════════════════════════
 
 performance <- data.frame(
   Model        = c("Model A", "Model B"),
-  Description  = c("Personality VSURF interpretation set",
+  Description  = c("Psychological Individual Differences VSURF interpretation set",
                    "Full VSURF interpretation set"),
   VSURF_Set    = c("Interpretation (Step 2)", "Interpretation (Step 2)"),
   N_Predictors = c(length(vars_A), length(vars_B)),
@@ -8663,7 +8663,7 @@ cat(sprintf("Outcome: %s  |  Stoppers: %d  |  Continuers: %d\n\n",
 
 cat("VSURF sets used: Interpretation (Step 2) — both models\n\n")
 
-cat(sprintf("Model A (Personality): %d predictors, EPV=%.1f, AUC=%s\n",
+cat(sprintf("Model A (Psychological Individual Differences): %d predictors, EPV=%.1f, AUC=%s\n",
             length(vars_A), epv_A, auc_A$AUC_formatted))
 cat(sprintf("Model B (Full):        %d predictors, EPV=%.1f, AUC=%s\n",
             length(vars_B), epv_B, auc_B$AUC_formatted))
@@ -8757,7 +8757,7 @@ library(car)
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("CHUNK 13: POST-LR DIAGNOSTICS (MULTIPLY IMPUTED DATA)\n")
-cat("Models: A (Personality) | B (Full) — VSURF interpretation sets\n")
+cat("Models: A (Psychological Individual Differences) | B (Full) — VSURF interpretation sets\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 #------------------------------------------------------------------------------
@@ -8887,7 +8887,7 @@ nagelkerke_manual <- function(fits_list, data_list, outcome_var, label) {
 }
 
 r2_A <- nagelkerke_manual(fits_A, imputed_list, outcome_var,
-                           "Model A — Personality")
+                           "Model A — Psychological Individual Differences")
 r2_B <- nagelkerke_manual(fits_B, imputed_list, outcome_var,
                            "Model B — Full")
 
@@ -8959,7 +8959,7 @@ hl_mi <- function(fits_list, data_list, outcome_var, g = 10, label) {
 }
 
 hl_A <- hl_mi(fits_A, imputed_list, outcome_var, g = 10,
-              "Model A — Personality")
+              "Model A — Psychological Individual Differences")
 hl_B <- hl_mi(fits_B, imputed_list, outcome_var, g = 10,
               "Model B — Full")
 
@@ -9033,7 +9033,7 @@ run_confusion_matrix <- function(avg_pred, obs, label) {
        cm_table = cm$table, cm_full = cm)
 }
 
-cm_A <- run_confusion_matrix(avg_pred_A, observed, "Model A — Personality")
+cm_A <- run_confusion_matrix(avg_pred_A, observed, "Model A — Psychological Individual Differences")
 cm_B <- run_confusion_matrix(avg_pred_B, observed, "Model B — Full")
 
 #------------------------------------------------------------------------------
@@ -9141,7 +9141,7 @@ run_box_tidwell <- function(outcome, all_vars, cont_vars, data, label) {
 }
 
 bt_A <- run_box_tidwell(outcome_var, vars_A, cont_A, dat_bt,
-                         "Model A — Personality")
+                         "Model A — Psychological Individual Differences")
 bt_B <- run_box_tidwell(outcome_var, vars_B, cont_B, dat_bt,
                          "Model B — Full")
 
@@ -9363,14 +9363,14 @@ cat("✓ Ready for Chunk 14: influential cases analysis\n\n")
 ## Cross-Validation
 ```{r}
 #==============================================================================
-# CHUNK 13: 10-FOLD CROSS-VALIDATION — PERSONALITY vs FULL MODEL
+# CHUNK 13: 10-FOLD CROSS-VALIDATION — PSYCHOLOGICAL INDIVIDUAL DIFFERENCES vs FULL MODEL
 #==============================================================================
 # Purpose:
 #   Internal validation of both logistic regression models from Chunk 12
 #   using 10-fold cross-validation across all 24 imputations.
 #
 # Models:
-#   Model A — Personality VSURF interpretation set (Chunk 11A)
+#   Model A — Psychological Individual Differences VSURF interpretation set (Chunk 11A)
 #   Model B — Full VSURF interpretation set (Chunk 11B)
 #   Both models use the interpretation set (Step 2), consistent with Chunk 12.
 #
@@ -9400,7 +9400,7 @@ library(pROC)
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("CHUNK 13: 10-FOLD CROSS-VALIDATION\n")
-cat("Model A (Personality) vs Model B (Full)\n")
+cat("Model A (Psychological Individual Differences) vs Model B (Full)\n")
 cat("Both models use VSURF interpretation set (Step 2)\n")
 cat("Raw-score models used (consistent with Chunk 12)\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
@@ -9469,7 +9469,7 @@ apparent_upper_B <- chunk12$auc$model_B$AUC_upper
 
 cat(sprintf("Outcome: %s\n\n", outcome_var))
 
-cat(sprintf("Model A — Personality VSURF interpretation set (%d variables):\n",
+cat(sprintf("Model A — Psychological Individual Differences VSURF interpretation set (%d variables):\n",
             length(vars_A)))
 for (v in vars_A) cat(sprintf("  • %s\n", v))
 cat("\n")
@@ -9631,7 +9631,7 @@ run_cv_all_imputations <- function(imputed_list, formula_obj, outcome_var,
 }
 
 cv_results_A <- run_cv_all_imputations(
-  imputed_list, formula_A, outcome_var, "Model A (Personality)")
+  imputed_list, formula_A, outcome_var, "Model A (Psychological Individual Differences)")
 
 cv_results_B <- run_cv_all_imputations(
   imputed_list, formula_B, outcome_var, "Model B (Full)")
@@ -9699,7 +9699,7 @@ pool_cv <- function(cv_results_list, apparent_aucs_per_imp,
 pooled_A <- pool_cv(
   cv_results_A, apparent_aucs_A,
   apparent_auc_A, apparent_lower_A, apparent_upper_A,
-  "MODEL A — Personality (interpretation set, raw scores)")
+  "MODEL A — Psychological Individual Differences (interpretation set, raw scores)")
 
 pooled_B <- pool_cv(
   cv_results_B, apparent_aucs_B,
@@ -9735,7 +9735,7 @@ fold_stability <- function(cv_results_list, label) {
   fold_df
 }
 
-fold_A <- fold_stability(cv_results_A, "MODEL A — Personality")
+fold_A <- fold_stability(cv_results_A, "MODEL A — Psychological Individual Differences")
 fold_B <- fold_stability(cv_results_B, "MODEL B — Full")
 
 #------------------------------------------------------------------------------
@@ -9775,7 +9775,7 @@ cat("PART G: Summary\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 summary_table <- data.frame(
-  Model        = c("Model A (Personality)", "Model B (Full)"),
+  Model        = c("Model A (Psychological Individual Differences)", "Model B (Full)"),
   VSURF_Set    = c("Interpretation (Step 2)", "Interpretation (Step 2)"),
   Scores       = c("Raw", "Raw"),
   N_Predictors = c(length(vars_A), length(vars_B)),
@@ -9892,7 +9892,7 @@ cat("✓ Ready for Chunk 14: reporting / visualisation\n\n")
 #==============================================================================
 # Purpose:
 #   Characterise and assess the robustness of influential cases separately
-#   for Model A (Personality, interpretation set) and Model B (Full,
+#   for Model A (Psychological Individual Differences, interpretation set) and Model B (Full,
 #   interpretation set).
 #
 # HOW COOK'S D IS CALCULATED:
@@ -9980,8 +9980,8 @@ cat("✓ Ready for Chunk 14: reporting / visualisation\n\n")
 #     I2. What distinguishes A-only from B-only influential cases?
 #         Profiles predictors unique to each model for that model's
 #         single-model influential cases. Tests whether A-only cases are
-#         unusual on personality predictors and B-only cases unusual on
-#         non-personality predictors.
+#         unusual on psychological individual differences predictors and B-only cases unusual on
+#         non-psychological individual differences predictors.
 #     I3. Do overlap cases disproportionately drive non-robust findings?
 #         Refits each model after removing overlap cases only and checks
 #         whether non-robust predictors from Part G lose significance.
@@ -10008,7 +10008,7 @@ library(car)
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("CHUNK 14: INFLUENTIAL CASES ANALYSIS\n")
-cat("Model A (Personality) and Model B (Full) — interpretation set\n")
+cat("Model A (Psychological Individual Differences) and Model B (Full) — interpretation set\n")
 cat("Raw-score models used (consistent with Chunk 12)\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
@@ -10663,7 +10663,7 @@ run_influential_analysis <- function(model_label, formula_obj, model_vars,
 #------------------------------------------------------------------------------
 
 results_A <- run_influential_analysis(
-  model_label     = "MODEL A — Personality (interpretation set, raw scores)",
+  model_label     = "MODEL A — Psychological Individual Differences (interpretation set, raw scores)",
   formula_obj     = formula_A, model_vars = vars_A,
   inf_idx         = inf_idx_A, cooks_stats = cooks_A,
   imputed_list    = imputed_list, outcome_var = outcome_var,
@@ -10685,7 +10685,7 @@ cat("PART H: Overlap analysis — cases influential in both models\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 cat("Overlap cases are flagged as influential in BOTH Model A and Model B.\n")
-cat("Their influence is not domain-specific — it persists across personality-\n")
+cat("Their influence is not domain-specific — it persists across psychological individual differences-\n")
 cat("only and full predictor sets — suggesting something fundamental about\n")
 cat("these participants (extreme outcome values, unusual predictor profiles\n")
 cat("spanning both domains).\n\n")
@@ -11109,7 +11109,7 @@ cat("PART J: Cross-model summary\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 summary_table <- data.frame(
-  Model             = c("Model A (Personality)", "Model B (Full)"),
+  Model             = c("Model A (Psychological Individual Differences)", "Model B (Full)"),
   N_Influential     = c(results_A$n_influential, results_B$n_influential),
   Pct_Influential   = sprintf("%.1f%%", 100 * c(results_A$n_influential,
                                                  results_B$n_influential) / N),
@@ -11246,41 +11246,31 @@ cat("✓ Ready for Chunk 15\n\n")
 #            MODEL A & MODEL B — INTERPRETATION SET
 #==============================================================================
 # Purpose:
-#   Answer two related questions arising from Chunk 14:
+#   Answer two related questions arising from Chunk 14 (exact figures for
+#   the current run are printed live below, not hardcoded here):
 #
 #   QUESTION 1 — Influence mechanism: subgroup or outlier?
-#     Both models had influential cases with very high discontinuation rates
-#     (Model A: 95.7%, Model B: 74.2%), but their scenario classifications
-#     differ in specificity:
-#
-#     Model A (Scenario 1 — coherent clinical subgroup, 5/6 predictors
-#     flagged, all high-extreme): The influential cases are elevated across
-#     nearly all personality predictors. The subgroup conclusion is already
-#     well-supported by the scenario classification. The leverage/residual
-#     decomposition and PMPP confirm the mechanism: are these cases
+#     Both models' influential cases may have markedly higher discontinuation
+#     rates than non-influential cases, but their scenario classifications
+#     (Chunk 14) can differ in specificity — from a coherent clinical
+#     subgroup (most predictors flagged, all in the same direction) to a
+#     heterogeneous/partial profile (fewer predictors flagged, mixed
+#     direction). The leverage/residual decomposition and PMPP diagnostic
+#     below determine, for each model, whether its influential cases are
 #     identified as high-risk from predictor values alone (high leverage /
-#     low residual), or are they mispredicted despite typical predictors
-#     (low leverage / high residual)?
-#
-#     Model B (Scenario 2 — heterogeneous/partial profile, 5/9 predictors
-#     flagged): The subgroup conclusion is less certain. Flagged predictors
-#     are bzra_daily_diazepam_eq, c_lengthofuse, n_sleep_conditions,
-#     wdl_symptom_count, and DBAS_Medications (low extreme). Four predictors
-#     are not flagged. The leverage/residual decomposition and PMPP
-#     diagnostic are particularly important here to determine whether these
-#     cases represent a coherent high-risk subgroup or a mix of statistical
-#     outliers driven by a subset of unusual predictor values.
+#     low residual — supports a subgroup interpretation), or are mispredicted
+#     despite typical predictors (low leverage / high residual — supports
+#     an outlier interpretation).
 #
 #   QUESTION 2 — Magnitude instability in Model B robust predictors:
-#     Chunk 14 Part G identified two predictors in Model B that retained
-#     significance after influential case removal but showed substantial
-#     OR magnitude shifts:
-#       capabilityC:  full OR=2.36 -> clean OR=4.34 (+83.6%)
-#       side_effectsC: full OR=1.75 -> clean OR=2.39 (+36.5%)
-#     This part investigates whether these shifts are driven by the overlap
-#     cases (influential in both models), the B-only influential cases, or
-#     are distributed across all influential cases. Understanding the
-#     mechanism informs how to report these predictors.
+#     Chunk 14 Part G may identify predictors in Model B that retain
+#     significance after influential-case removal but show substantial OR
+#     magnitude shifts (see PART D below for which predictors and exact
+#     shifts, computed live from removal_comparison). This part investigates
+#     whether such shifts are driven by the overlap cases (influential in
+#     both models), the B-only influential cases, or are distributed across
+#     all influential cases. Understanding the mechanism informs how to
+#     report these predictors.
 #
 # APPROACH:
 #
@@ -11299,22 +11289,24 @@ cat("✓ Ready for Chunk 15\n\n")
 #     PMPP is the row-wise mean predicted probability across all imputations,
 #     derived from predictor values alone (independent of observed outcome).
 #     For Model A: confirms whether the model identifies influential cases
-#     as high-risk from personality predictors alone, supporting Scenario 1.
-#     For Model B: primary disambiguation tool — high PMPP despite Scenario 2
-#     supports a partial subgroup; low PMPP suggests outlier/residual-driven
-#     influence.
+#     as high-risk from psychological individual differences predictors alone
+#     (supports a coherent-subgroup classification if so).
+#     For Model B: primary disambiguation tool — high PMPP despite a
+#     heterogeneous/partial predictor profile supports a partial subgroup;
+#     low PMPP suggests outlier/residual-driven influence.
 #     Thresholds:
 #       PMPP median >= 0.70 -> model identifies as high-risk -> subgroup
 #       PMPP median 0.40-0.69 -> partial identification -> moderate support
 #       PMPP median < 0.40  -> model did not predict outcomes -> outlier
 #
 #   Part D: Magnitude shift investigation — capabilityC and side_effectsC
-#     The +83.6% and +36.5% OR shifts in Model B are large enough to affect
-#     clinical interpretation. This part determines which influential cases
-#     are driving the attenuation in the full model:
-#       D1. Sequential removal: remove overlap cases only (n=12), then
-#           B-only cases only (n=18), compare ORs to full and fully-
-#           cleaned models. Identifies which subgroup is responsible.
+#     If OR shifts for these predictors in Model B are large enough to affect
+#     clinical interpretation (see PART D below for exact figures), this part
+#     determines which influential cases are driving the attenuation in the
+#     full model:
+#       D1. Sequential removal: remove overlap cases only, then B-only
+#           cases only, compare ORs to full and fully-cleaned models.
+#           Identifies which subgroup is responsible.
 #       D2. Predictor profiles: compare capabilityC and side_effectsC
 #           values for overlap vs B-only influential cases vs non-influential,
 #           to understand the mechanism of attenuation.
@@ -11340,12 +11332,11 @@ cat("  1. Decompose Cook's D into leverage vs residual components to\n")
 cat("     determine whether influential cases are high-risk subgroup\n")
 cat("     members or statistical outliers (both models).\n")
 cat("  2. PMPP diagnostic: does the model identify influential cases\n")
-cat("     as high-risk from predictor values alone?\n")
-cat("     - Model A (Scenario 1): confirmation of coherent subgroup.\n")
-cat("     - Model B (Scenario 2): primary disambiguation tool.\n")
-cat("  3. Investigate the +83.6%% (capabilityC) and +36.5%%\n")
-cat("     (side_effectsC) OR magnitude shifts in Model B to identify\n")
-cat("     which influential cases drive the attenuation.\n\n")
+cat("     as high-risk from predictor values alone? See each model's\n")
+cat("     scenario classification (Chunk 14) for interpretation.\n")
+cat("  3. Investigate the capabilityC and side_effectsC OR magnitude\n")
+cat("     shifts in Model B (see PART D below for exact figures) to\n")
+cat("     identify which influential cases drive the attenuation.\n\n")
 
 #------------------------------------------------------------------------------
 # PART A: LOAD DATA
@@ -11364,6 +11355,10 @@ if (!file.exists("regression_comparison_results.rds"))
 imputed_list <- readRDS("imputed_datasets_complete_final.rds")
 inf_results  <- readRDS("influential_cases_results.rds")
 chunk12      <- readRDS("regression_comparison_results.rds")
+
+scenario_short <- function(scenario_string) sub("^(SCENARIO [0-9]+):.*", "\\1", scenario_string)
+scen_A <- inf_results$results_A$scenario
+scen_B <- inf_results$results_B$scenario
 
 m            <- length(imputed_list)
 N            <- nrow(imputed_list[[1]])
@@ -11392,24 +11387,28 @@ cat(sprintf("✓ Loaded imputed_datasets_complete_final.rds  (m=%d, N=%d)\n", m,
 cat(sprintf("✓ Loaded influential_cases_results.rds\n"))
 cat(sprintf("✓ Loaded regression_comparison_results.rds\n\n"))
 
+flagged_desc <- function(scen) paste(
+  sprintf("%s (%s)", scen$ratio_df$Variable[scen$ratio_df$Flagged],
+          scen$ratio_df$Direction[scen$ratio_df$Flagged]),
+  collapse = ", ")
+
 cat(sprintf("Model A: %d influential cases  |  %d non-influential\n",
             length(inf_idx_A), length(noninf_idx_A)))
 cat(sprintf("  Outcome rate — Influential: %.1f%%  |  Non-influential: %.1f%%\n",
             100 * mean(outcome1[inf_idx_A]),
             100 * mean(outcome1[noninf_idx_A])))
-cat(sprintf("  Scenario 1: coherent clinical subgroup (5/6 predictors flagged,\n"))
-cat(sprintf("  all high-extreme): DBAS_Medications, SURPS_Hopelessness,\n"))
-cat(sprintf("  CISS_Emotion, DBAS_Consequences, BFI_Neuroticism\n\n"))
+cat(sprintf("  %s (%d/%d predictors flagged):\n",
+            scen_A$scenario, scen_A$n_flagged, length(vars_A)))
+cat(sprintf("  %s\n\n", flagged_desc(scen_A)))
 
 cat(sprintf("Model B: %d influential cases  |  %d non-influential\n",
             length(inf_idx_B), length(noninf_idx_B)))
 cat(sprintf("  Outcome rate — Influential: %.1f%%  |  Non-influential: %.1f%%\n",
             100 * mean(outcome1[inf_idx_B]),
             100 * mean(outcome1[noninf_idx_B])))
-cat(sprintf("  Scenario 2: heterogeneous/partial profile (5/9 predictors\n"))
-cat(sprintf("  flagged): bzra_daily_diazepam_eq (high), c_lengthofuse (high),\n"))
-cat(sprintf("  n_sleep_conditions (high), wdl_symptom_count (high),\n"))
-cat(sprintf("  DBAS_Medications (low extreme)\n\n"))
+cat(sprintf("  %s (%d/%d predictors flagged):\n",
+            scen_B$scenario, scen_B$n_flagged, length(vars_B)))
+cat(sprintf("  %s\n\n", flagged_desc(scen_B)))
 
 cat(sprintf("Overlap (influential in both): %d\n", length(overlap_idx)))
 cat(sprintf("A-only influential:            %d\n", length(A_only_idx)))
@@ -11431,10 +11430,11 @@ cat(sprintf("B-only influential:            %d\n\n", length(B_only_idx)))
 #
 # Values averaged across all m imputations for stability.
 #
-# Model A expectation (Scenario 1): high leverage / low residual pattern
-#   expected, confirming the coherent subgroup classification.
-# Model B expectation (Scenario 2): pattern less certain; mix of
-#   mechanisms plausible given partial predictor flagging.
+# If a model's influential cases were classified as a coherent subgroup
+# (Chunk 14), a high leverage / low residual pattern is expected here,
+# confirming that classification. If classified as heterogeneous/partial,
+# the pattern is less certain and a mix of mechanisms is plausible given
+# partial predictor flagging.
 #------------------------------------------------------------------------------
 
 cat("═══════════════════════════════════════════════════════════════\n")
@@ -11448,8 +11448,8 @@ cat("                                     -> coherent high-risk subgroup\n")
 cat("  Low  leverage + high residual  -> typical predictors, unexpected outcome\n")
 cat("                                     -> statistical outlier / ceiling effect\n")
 cat("  High leverage + high residual  -> both -> most influential\n\n")
-cat("Model A (Scenario 1): high leverage / low residual pattern expected.\n")
-cat("Model B (Scenario 2): pattern uncertain — primary disambiguation.\n\n")
+cat(sprintf("Model A (%s): pattern shown below.\n", scenario_short(scen_A$scenario)))
+cat(sprintf("Model B (%s): pattern shown below.\n\n", scenario_short(scen_B$scenario)))
 
 decompose_influence <- function(imputed_list, formula_obj, inf_idx, label) {
 
@@ -11565,9 +11565,13 @@ decompose_influence <- function(imputed_list, formula_obj, inf_idx, label) {
 }
 
 decomp_A <- decompose_influence(imputed_list, formula_A, inf_idx_A,
-                                 "MODEL A — Personality (n=23 influential, Scenario 1)")
+                                 sprintf("MODEL A — Psychological Individual Differences (n=%d influential, %s)",
+                                         length(inf_idx_A),
+                                         scenario_short(inf_results$results_A$scenario$scenario)))
 decomp_B <- decompose_influence(imputed_list, formula_B, inf_idx_B,
-                                 "MODEL B — Full (n=30 influential, Scenario 2)")
+                                 sprintf("MODEL B — Full (n=%d influential, %s)",
+                                         length(inf_idx_B),
+                                         scenario_short(inf_results$results_B$scenario$scenario)))
 
 #------------------------------------------------------------------------------
 # PART C: POOLED MEAN PREDICTED PROBABILITY (PMPP) — BOTH MODELS
@@ -11575,17 +11579,17 @@ decomp_B <- decompose_influence(imputed_list, formula_B, inf_idx_B,
 # PMPP = row-wise mean predicted probability across all imputations,
 # derived from predictor values alone, independent of observed outcome.
 #
-# Model A (Scenario 1 — already classified as coherent subgroup):
-#   PMPP confirms whether personality predictors alone are sufficient to
+# Model A (if classified as a coherent subgroup in Chunk 14):
+#   PMPP confirms whether psychological individual differences predictors alone are sufficient to
 #   identify these cases as high-risk. Expected: high PMPP, consistent
-#   with the Scenario 1 classification and 91.3% discontinuation rate.
+#   with the scenario classification and discontinuation rate printed below.
 #
-# Model B (Scenario 2 — heterogeneous, primary disambiguation):
-#   PMPP is the key diagnostic. Despite 5/9 predictors flagged and 86.7%
-#   discontinuation, it is unclear whether the clinical predictors
-#   collectively identify these cases as high-risk. High PMPP would
-#   partially rehabilitate the subgroup interpretation; low PMPP would
-#   indicate residual-driven influence and counsel caution.
+# Model B (if classified as heterogeneous, primary disambiguation):
+#   PMPP is the key diagnostic. Given only some predictors flagged (see
+#   scenario classification below), it is unclear whether the clinical
+#   predictors collectively identify these cases as high-risk. High PMPP
+#   would partially rehabilitate the subgroup interpretation; low PMPP
+#   would indicate residual-driven influence and counsel caution.
 #
 # Thresholds:
 #   PMPP median >= 0.70 -> model identifies as high-risk -> supports subgroup
@@ -11600,9 +11604,12 @@ cat("═════════════════════════
 cat("PMPP = row-wise mean predicted probability across all imputations.\n")
 cat("Reflects what the model predicts from predictor values alone,\n")
 cat("independently of the observed outcome.\n\n")
-cat("Model A (Scenario 1): confirmatory — expected high PMPP given\n")
-cat("  coherent subgroup classification and 91.3%% discontinuation.\n")
-cat("Model B (Scenario 2): primary diagnostic — PMPP determines whether\n")
+cat(sprintf("Model A (%s): expected high PMPP given the scenario\n",
+            scenario_short(inf_results$results_A$scenario$scenario)))
+cat(sprintf("  classification and %.1f%% discontinuation among influential cases.\n",
+            100 * mean(outcome1[inf_idx_A])))
+cat(sprintf("Model B (%s): primary diagnostic — PMPP determines whether\n",
+            scenario_short(inf_results$results_B$scenario$scenario)))
 cat("  full clinical predictor set collectively identifies these cases\n")
 cat("  as high-risk despite partial/heterogeneous predictor flagging.\n\n")
 cat("Thresholds:\n")
@@ -11704,17 +11711,18 @@ compute_pmpp <- function(imputed_list, formula_obj, inf_idx, label) {
 }
 
 pmpp_A <- compute_pmpp(imputed_list, formula_A, inf_idx_A,
-                        "MODEL A — Personality (Scenario 1, confirmatory)")
+                        sprintf("MODEL A — Psychological Individual Differences (%s, confirmatory)",
+                                scenario_short(inf_results$results_A$scenario$scenario)))
 pmpp_B <- compute_pmpp(imputed_list, formula_B, inf_idx_B,
-                        "MODEL B — Full (Scenario 2, primary diagnostic)")
+                        sprintf("MODEL B — Full (%s, primary diagnostic)",
+                                scenario_short(inf_results$results_B$scenario$scenario)))
 
 #------------------------------------------------------------------------------
 # PART D: MAGNITUDE SHIFT INVESTIGATION — capabilityC AND side_effectsC
 #
 # Chunk 14 Part G found that two predictors in Model B retained significance
-# after removing all 30 influential cases but showed substantial OR shifts:
-#   capabilityC:   full OR=2.36 [1.70, 3.29] -> clean OR=4.34 [2.60, 7.24]  (+83.6%)
-#   side_effectsC: full OR=1.75 [1.21, 2.53] -> clean OR=2.39 [1.46, 3.92]  (+36.5%)
+# after removing all influential cases but showed substantial OR shifts
+# (see the BACKGROUND block below, computed live from removal_comparison).
 #
 # These shifts mean the full-model ORs are attenuated relative to the
 # effect in the non-influential population. The direction is stable (both
@@ -11723,10 +11731,10 @@ pmpp_B <- compute_pmpp(imputed_list, formula_B, inf_idx_B,
 #
 # APPROACH:
 #   D1. Sequential removal: compute ORs after removing:
-#       (a) overlap cases only (n=12): tests whether domain-general cases
+#       (a) overlap cases only: tests whether domain-general cases
 #           drive the attenuation
-#       (b) B-only cases only (n=18): tests whether B-specific cases drive it
-#       (c) all B influential cases (n=30): the full clean model (from Chunk 14)
+#       (b) B-only cases only: tests whether B-specific cases drive it
+#       (c) all B influential cases: the full clean model (from Chunk 14)
 #   D2. Predictor profiles for capabilityC and side_effectsC across
 #       influence groups (overlap vs B-only vs non-influential), to
 #       understand why these cases attenuate the ORs.
@@ -11735,16 +11743,24 @@ pmpp_B <- compute_pmpp(imputed_list, formula_B, inf_idx_B,
 # Helper: pool GLM coefficients across imputations using Rubin's rules.
 #------------------------------------------------------------------------------
 
+rc_B    <- inf_results$results_B$removal_comparison
+cap_row <- rc_B[rc_B$term == "capabilityC", ]
+se_row  <- rc_B[rc_B$term == "side_effectsC", ]
+
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("PART D: Magnitude shift investigation\n")
-cat("capabilityC (+83.6%%) and side_effectsC (+36.5%%) — Model B\n")
+cat(sprintf("capabilityC (%+.1f%%) and side_effectsC (%+.1f%%) — Model B\n",
+            cap_row$OR_change_pct, se_row$OR_change_pct))
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 cat("BACKGROUND:\n")
 cat("  Chunk 14 Part G: capabilityC and side_effectsC remain significant\n")
-cat("  after removing all 30 influential cases, but ORs shift substantially:\n")
-cat("    capabilityC:   2.36 [1.70, 3.29] -> 4.34 [2.60, 7.24]  (+83.6%%)\n")
-cat("    side_effectsC: 1.75 [1.21, 2.53] -> 2.39 [1.46, 3.92]  (+36.5%%)\n\n")
+cat(sprintf("  after removing all %d influential cases, but ORs shift substantially:\n",
+            length(inf_idx_B)))
+cat(sprintf("    capabilityC:   %s -> %s  (%+.1f%%)\n",
+            cap_row$OR_CI_full, cap_row$OR_CI_clean, cap_row$OR_change_pct))
+cat(sprintf("    side_effectsC: %s -> %s  (%+.1f%%)\n\n",
+            se_row$OR_CI_full, se_row$OR_CI_clean, se_row$OR_change_pct))
 cat("  These shifts indicate that influential cases attenuate both\n")
 cat("  associations in the full model. This part identifies which\n")
 cat("  subgroup of influential cases is responsible.\n\n")
@@ -11962,10 +11978,12 @@ cat("BASED ON D1-D2 FINDINGS:\n\n")
 cat("  1. Report both the full-model and clean-model ORs for capabilityC\n")
 cat("     and side_effectsC in the sensitivity analysis section.\n")
 cat("     The direction of both effects is stable; the magnitude is not.\n\n")
-cat("  2. The full-model ORs (capabilityC=2.36, side_effectsC=1.75) should\n")
+cat(sprintf("  2. The full-model ORs (capabilityC=%.2f, side_effectsC=%.2f) should\n",
+            cap_row$OR_full, se_row$OR_full))
 cat("     be understood as conservative estimates attenuated by a small\n")
-cat("     subgroup of influential cases. The clean-model ORs represent\n")
-cat("     the association in the remaining 392 participants.\n\n")
+cat(sprintf("     subgroup of influential cases. The clean-model ORs represent\n"))
+cat(sprintf("     the association in the remaining %d participants.\n\n",
+            N - length(inf_idx_B)))
 cat("  3. D1 results will determine whether to attribute the attenuation\n")
 cat("     primarily to overlap cases (domain-general influence) or B-only\n")
 cat("     cases (clinical predictor-specific influence). Report whichever\n")
@@ -11974,8 +11992,10 @@ cat("SUGGESTED REPORTING LANGUAGE:\n")
 cat("  'Two predictors — perceived capability and side effects — retained\n")
 cat("  significance across both the full and sensitivity samples, though\n")
 cat("  their effect sizes were attenuated in the full model. Removal of\n")
-cat("  influential cases (n=30) increased the OR for capability from\n")
-cat("  2.36 to 4.34 and for side effects from 1.75 to 2.39, suggesting\n")
+cat(sprintf("  influential cases (n=%d) increased the OR for capability from\n",
+            length(inf_idx_B)))
+cat(sprintf("  %.2f to %.2f and for side effects from %.2f to %.2f, suggesting\n",
+            cap_row$OR_full, cap_row$OR_clean, se_row$OR_full, se_row$OR_clean))
 cat("  that a small subgroup of influential cases moderated these\n")
 cat("  associations. Full-model estimates are reported as conservative\n")
 cat("  values; sensitivity estimates are reported in supplementary\n")
@@ -11989,47 +12009,71 @@ cat("═════════════════════════
 cat("PART E: Synthesis\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
-cat("MODEL A — Personality influential cases (n=23, Scenario 1):\n")
-cat("──────────────────────────────────────────────────────────────\n")
-cat("  Outcome rate:     91.3%% (vs 23.6%% base rate)\n")
-cat("  Scenario 1:       5/6 predictors flagged (all high-extreme)\n")
-cat("                    DBAS_Medications, SURPS_Hopelessness, CISS_Emotion,\n")
-cat("                    DBAS_Consequences, BFI_Neuroticism\n")
-cat("  Leverage/PMPP:    see Part B and Part C results above\n\n")
-cat("  EXPECTED PATTERN:\n")
-cat("  Scenario 1 already supports a coherent clinical subgroup. Parts B\n")
-cat("  and C should confirm this:\n")
-cat("  - Part B: predominantly high leverage / low residual\n")
-cat("  - Part C: median PMPP >= 0.60\n")
-cat("  If confirmed: these are high-risk participants with elevated\n")
-cat("  dysfunctional sleep beliefs, hopelessness, emotional coping style,\n")
-cat("  and neuroticism who overwhelmingly discontinued. The model\n")
-cat("  identified them as high-risk from personality predictors alone.\n")
-cat("  Note that DBAS_Medications is the single robust predictor after\n")
-cat("  their removal; the other 4 flagged predictors are non-significant\n")
-cat("  in the broader sample.\n\n")
-cat("  If Parts B/C show residual-driven pattern (unexpected given Scenario 1):\n")
-cat("  Report that the personality model identified the subgroup by predictor\n")
-cat("  profile but could not fully predict their near-ceiling outcome rate.\n\n")
+rc_A   <- inf_results$results_A$removal_comparison
 
-cat("MODEL B — Full influential cases (n=30, Scenario 2):\n")
+rate_inf_A    <- 100 * mean(outcome1[inf_idx_A])
+rate_noninf_A <- 100 * mean(outcome1[noninf_idx_A])
+rate_inf_B    <- 100 * mean(outcome1[inf_idx_B])
+rate_noninf_B <- 100 * mean(outcome1[noninf_idx_B])
+
+flagged_desc_A <- flagged_desc(scen_A)
+flagged_desc_B <- flagged_desc(scen_B)
+
+robust_labels_syn <- c("Robust (remains significant)",
+                       "Robust but substantial magnitude shift (>=25%)",
+                       "Separation in reduced sample — interpret cautiously")
+robust_terms_A <- rc_A$term[rc_A$Robustness %in% robust_labels_syn]
+robust_stable_B <- rc_B$term[rc_B$Robustness == "Robust (remains significant)"]
+robust_shift_B  <- rc_B$term[rc_B$Robustness == "Robust but substantial magnitude shift (>=25%)"]
+gains_terms_B   <- rc_B$term[rc_B$Robustness == "Gains significance after removal"]
+
+cat(sprintf("MODEL A — Psychological Individual Differences influential cases (n=%d, %s):\n",
+            length(inf_idx_A), scen_A$scenario))
 cat("──────────────────────────────────────────────────────────────\n")
-cat("  Outcome rate:     86.7%% (vs 22.7%% non-influential)\n")
-cat("  Scenario 2:       5/9 predictors flagged — heterogeneous profile\n")
-cat("                    High: bzra_daily_diazepam_eq, c_lengthofuse,\n")
-cat("                          n_sleep_conditions, wdl_symptom_count\n")
-cat("                    Low:  DBAS_Medications\n")
-cat("  Robust predictors (Chunk 14): DBAS_Medications (stable),\n")
-cat("                    capabilityC (magnitude shift +83.6%%),\n")
-cat("                    side_effectsC (magnitude shift +36.5%%)\n")
-cat("  Gains significance: c_lengthofuse\n\n")
-cat("  The Scenario 2 classification means the subgroup conclusion is\n")
+cat(sprintf("  Outcome rate:     %.1f%% (vs %.1f%% base rate)\n", rate_inf_A, rate_noninf_A))
+cat(sprintf("  Flagged:          %d/%d predictors: %s\n",
+            scen_A$n_flagged, length(vars_A), flagged_desc_A))
+cat("  Leverage/PMPP:    see Part B and Part C results above\n\n")
+cat("  INTERPRETATION GUIDE:\n")
+cat("  - Part B predominantly high leverage / low residual, together with\n")
+cat("    Part C median PMPP >= 0.60, support a coherent subgroup\n")
+cat("    interpretation: high-risk participants elevated on the flagged\n")
+cat("    predictors above, who overwhelmingly followed the discontinuation\n")
+cat("    pattern (identified as high-risk from predictor values alone).\n")
+cat("  - A residual-driven pattern instead would mean the model identified\n")
+cat("    the subgroup by predictor profile but could not fully predict\n")
+cat("    their outcome rate.\n")
+if (length(robust_terms_A) > 0) {
+  cat(sprintf("  Robust predictor(s) after removing these cases (Chunk 14): %s\n\n",
+              paste(robust_terms_A, collapse = ", ")))
+} else {
+  cat("  No predictors remained robust after removing these cases (Chunk 14).\n\n")
+}
+
+cat(sprintf("MODEL B — Full influential cases (n=%d, %s):\n",
+            length(inf_idx_B), scen_B$scenario))
+cat("──────────────────────────────────────────────────────────────\n")
+cat(sprintf("  Outcome rate:     %.1f%% (vs %.1f%% non-influential)\n", rate_inf_B, rate_noninf_B))
+cat(sprintf("  Flagged:          %d/%d predictors: %s\n",
+            scen_B$n_flagged, length(vars_B), flagged_desc_B))
+cat("  Robust predictors (Chunk 14):\n")
+if (length(robust_stable_B) > 0)
+  cat(sprintf("    Stable: %s\n", paste(robust_stable_B, collapse = ", ")))
+for (trm in robust_shift_B) {
+  pct <- rc_B$OR_change_pct[rc_B$term == trm]
+  cat(sprintf("    %s (magnitude shift %+.1f%%)\n", trm, pct))
+}
+if (length(gains_terms_B) > 0)
+  cat(sprintf("  Gains significance: %s\n", paste(gains_terms_B, collapse = ", ")))
+cat("\n")
+cat(sprintf("  The %s classification means the subgroup conclusion may be\n",
+            scenario_short(scen_B$scenario)))
 cat("  less certain than for Model A. Parts B and C are the key tests:\n")
-cat("  - If PMPP >= 0.60 AND high leverage pattern: the clinical predictors\n")
-cat("    collectively identify these as a high-burden subgroup (long-term\n")
-cat("    high-dose users with multiple sleep conditions) despite not all\n")
-cat("    predictors being flagged.\n")
-cat("  - If PMPP < 0.40 OR residual-dominated: the 86.7%% discontinuation\n")
+cat("  - PMPP >= 0.60 AND high leverage pattern: the clinical predictors\n")
+cat("    collectively identify these as a high-burden subgroup despite not\n")
+cat("    all predictors being flagged.\n")
+cat(sprintf("  - PMPP < 0.40 OR residual-dominated: the %.1f%% discontinuation\n",
+            rate_inf_B))
 cat("    exceeds what the predictor profile predicts; these cases have\n")
 cat("    disproportionate leverage not fully justified by their predictor\n")
 cat("    values. Report subgroup characterisation with caution.\n\n")
@@ -12071,13 +12115,15 @@ chunk14b_results <- list(
     A_only_idx  = A_only_idx,
     N           = N,
     m           = m,
-    notes = paste0(
-      "Chunk 14b corrected to align with Chunk 14 actual results. ",
-      "Model A: n=23 influential, Scenario 1 (5/6 flagged). ",
-      "Model B: n=30 influential, Scenario 2 (5/9 flagged). ",
+    notes = sprintf(paste0(
+      "Model A: n=%d influential, %s (%d/%d flagged). ",
+      "Model B: n=%d influential, %s (%d/%d flagged). ",
       "stop_wdl_exp_combined has 3 levels (no separation issue). ",
-      "Part D investigates capabilityC (+83.6%) and side_effectsC (+36.5%) ",
-      "magnitude shifts via sequential removal of overlap vs B-only cases.")
+      "Part D investigates capabilityC (%+.1f%%) and side_effectsC (%+.1f%%) ",
+      "magnitude shifts via sequential removal of overlap vs B-only cases."),
+      length(inf_idx_A), scenario_short(scen_A$scenario), scen_A$n_flagged, length(vars_A),
+      length(inf_idx_B), scenario_short(scen_B$scenario), scen_B$n_flagged, length(vars_B),
+      cap_row$OR_change_pct, se_row$OR_change_pct)
   )
 )
 
@@ -12106,18 +12152,20 @@ cat("CHUNK 14b COMPLETE\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 cat("QUESTION 1 — Influence mechanism: subgroup or outlier?\n")
-cat(sprintf("  Model A: %d influential cases, 91.3%% discontinued, Scenario 1\n",
-            length(inf_idx_A)))
-cat("  -> High leverage / low residual expected (coherent subgroup)\n")
-cat("  -> PMPP confirmatory; expected median >= 0.60\n\n")
-cat(sprintf("  Model B: %d influential cases, 86.7%% discontinued, Scenario 2\n",
-            length(inf_idx_B)))
-cat("  -> Mechanism uncertain; Part B and C are primary diagnostics\n")
-cat("  -> PMPP median determines subgroup vs outlier interpretation\n\n")
+cat(sprintf("  Model A: %d influential cases, %.1f%% discontinued, %s\n",
+            length(inf_idx_A), rate_inf_A, scenario_short(scen_A$scenario)))
+cat("  -> See Part B (leverage/residual) and Part C (PMPP) above for the\n")
+cat("     observed mechanism classification\n\n")
+cat(sprintf("  Model B: %d influential cases, %.1f%% discontinued, %s\n",
+            length(inf_idx_B), rate_inf_B, scenario_short(scen_B$scenario)))
+cat("  -> See Part B and Part C above; PMPP median determines subgroup\n")
+cat("     vs outlier interpretation\n\n")
 
 cat("QUESTION 2 — Magnitude shifts in capabilityC and side_effectsC:\n")
-cat("  capabilityC:   full=2.36 -> clean=4.34 (+83.6%%)\n")
-cat("  side_effectsC: full=1.75 -> clean=2.39 (+36.5%%)\n")
+cat(sprintf("  capabilityC:   full=%.2f -> clean=%.2f (%+.1f%%)\n",
+            cap_row$OR_full, cap_row$OR_clean, cap_row$OR_change_pct))
+cat(sprintf("  side_effectsC: full=%.2f -> clean=%.2f (%+.1f%%)\n",
+            se_row$OR_full, se_row$OR_clean, se_row$OR_change_pct))
 cat("  -> D1 sequential removal identifies which influential subgroup\n")
 cat("     (overlap vs B-only) drives the attenuation\n")
 cat("  -> D2 profiles explain the mechanism\n\n")
@@ -12226,7 +12274,7 @@ library(car)
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════\n")
 cat("CHUNK 15: COMPLETE CASE SENSITIVITY ANALYSIS\n")
-cat("Model A (Personality) and Model B (Full)\n")
+cat("Model A (Psychological Individual Differences) and Model B (Full)\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 #------------------------------------------------------------------------------
@@ -12874,7 +12922,7 @@ cat("═════════════════════════
 
 auc_table <- data.frame(
   Model       = c("Model A", "Model B"),
-  Description = c("Personality interpretation set", "Full interpretation set"),
+  Description = c("Psychological Individual Differences interpretation set", "Full interpretation set"),
   N_MI        = N_mi,
   N_CC        = n_cc,
   MI_AUC      = c(mi_auc_A$formatted, mi_auc_B$formatted),
@@ -12895,7 +12943,7 @@ cat("PART M: Publication-ready comparison table\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 pub_A <- comp_A %>%
-  dplyr::mutate(Model = "Model A — Personality") %>%
+  dplyr::mutate(Model = "Model A — Psychological Individual Differences") %>%
   dplyr::select(Model, Predictor = term,
          `MI OR [95% CI]` = MI_OR_CI, `MI p`  = MI_sig,
          `CC OR [95% CI]` = CC_OR_CI, `CC p`  = CC_sig,
