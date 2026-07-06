@@ -7321,8 +7321,8 @@ cat(sprintf("Beliefs/COM-B  (%2d): %s\n",
             sum(all_vars %in% beliefs_comob),
             paste(all_vars[all_vars %in% beliefs_comob], collapse = ", ")))
 cat(sprintf("Psychological Individual Differences    (%2d): %s\n",
-            sum(all_vars %in% psychological individual differences),
-            paste(all_vars[all_vars %in% psychological individual differences], collapse = ", ")))
+            sum(all_vars %in% personality),
+            paste(all_vars[all_vars %in% personality], collapse = ", ")))
 cat(sprintf("\nTotal candidate predictors (after availability check): %d\n",
             length(all_vars)))
 cat("DBAS_Total excluded (collinear with subscales)\n")
