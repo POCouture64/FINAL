@@ -456,7 +456,6 @@ dropout_results_obj <- list(
   dropout_n               = sum(SIMOA$dropout_before_personality),
   completer_n             = sum(SIMOA$dropout_before_personality == 0),
   dropout_proxy_check     = dropout_check,
-  partial_completer_check = partial_check,
   continuous_comparisons  = if (length(continuous_results) > 0)
                               do.call(rbind, continuous_results) else NULL,
   categorical_comparisons = if (length(categorical_results) > 0)
@@ -5185,6 +5184,7 @@ for (v in polr_check_vars) {
 }
 
 # sleep_aids variables — checked dynamically
+sleep_aid_vars <- grep("^sleep_aid", names(all_imputed[[1]]), value = TRUE)
 if (length(sleep_aid_vars) > 0) {
   for (v in sleep_aid_vars) {
     n_na <- sum(is.na(all_imputed[[1]][[v]]))
