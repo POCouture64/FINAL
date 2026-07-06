@@ -528,8 +528,7 @@ cat("═════════════════════════
 #   category.
 #
 # BZRA DOSE VARIABLES:
-#   bzra_daily_diazepam_eq  = daily diazepam-equivalent dose (mg/day)
-#   bzra_weekly_diazepam_eq = weekly diazepam-equivalent dose (mg/week)
+#   bzra_daily_diazepam_eq = daily diazepam-equivalent dose (mg/day)
 #
 # Composites deferred to Chunk 9 (post-imputation):
 #   benefitsC    = mean(benefit_1, benefit_4, benefit_5, benefit_6)
@@ -943,13 +942,12 @@ if (all(wdl_all_five %in% names(SIMOA))) {
 # =============================================================================
 # PART C: BZRA DOSE EQUIVALENT CALCULATIONS
 # =============================================================================
-# Variable names:
-#   bzra_weekly_diazepam_eq = weekly diazepam-equivalent dose (mg/week)
-#   bzra_daily_diazepam_eq  = daily diazepam-equivalent dose  (mg/day) = weekly / 7
+# Variable name:
+#   bzra_daily_diazepam_eq = daily diazepam-equivalent dose (mg/day)
 #
-# Formulas:
-#   Weekly dose eq = SUM across drugs: (days/week × daily_dose_mg) / divisor
-#   Daily dose eq  = weekly / 7
+# Formula:
+#   Weekly total (internal) = SUM across drugs: (days/week × daily_dose_mg) / divisor
+#   Daily dose eq            = weekly total / 7
 #
 # Divisors (mg relative to 5mg diazepam):
 #   Zopiclone=7.5, Lorazepam=1, Clonazepam=0.375, Alprazolam=0.5,
@@ -1223,19 +1221,15 @@ weekly_eq_matrix <- purrr::map_dfc(
   ~ compute_drug_weekly_eq(SIMOA, .x)
 )
 
+weekly_total <- rowSums(weekly_eq_matrix, na.rm = TRUE)
+weekly_total <- dplyr::if_else(apply(weekly_eq_matrix, 1, anyNA), NA_real_, weekly_total)
+
 SIMOA <- SIMOA %>%
   dplyr::mutate(
-    bzra_weekly_diazepam_eq = rowSums(weekly_eq_matrix, na.rm = TRUE),
-    bzra_weekly_diazepam_eq = dplyr::if_else(
-      apply(weekly_eq_matrix, 1, anyNA),
-      NA_real_,
-      bzra_weekly_diazepam_eq
-    ),
-    bzra_daily_diazepam_eq = bzra_weekly_diazepam_eq / 7
+    bzra_daily_diazepam_eq = weekly_total / 7
   )
 
-cat("✓ bzra_weekly_diazepam_eq created (mg/week)\n")
-cat("✓ bzra_daily_diazepam_eq  created (mg/day = weekly / 7)\n")
+cat("✓ bzra_daily_diazepam_eq created (mg/day = weekly total / 7)\n")
 cat("  (NA = confirmed user with missing dose/freq — will be imputed)\n\n")
 
 cat("SUMMARY:\n")
@@ -1579,7 +1573,7 @@ core_demographics <- c("age","sex","prov_terr","education","employment",
 health_vars       <- c("phq2_score","osss_3_score","gen_health","med_quant")
 length_of_use     <- "c_lengthofuse"
 fall_var          <- "fall2"
-bzra_dose_vars    <- c("bzra_daily_diazepam_eq", "bzra_weekly_diazepam_eq")
+bzra_dose_vars    <- c("bzra_daily_diazepam_eq")
 
 benefit_items     <- c("benefit_1","benefit_4","benefit_5","benefit_6")
 side_effect_items <- paste0("side_effects_", 1:4)
@@ -1842,13 +1836,12 @@ cat(sprintf("Final dataset: %d obs x %d vars -> SIMOA_analysis.rds\n\n",
 #              sparse for reliable estimation, combined n ≈ 14)
 #             Stored as UNORDERED factor so downstream models use dummy
 #             coding, not polynomial contrasts.
-#   • BZRA dose variables: bzra_daily_diazepam_eq, bzra_weekly_diazepam_eq
-#       (diazepam milligram equivalents; mg/day and mg/week)
+#   • BZRA dose variable: bzra_daily_diazepam_eq (diazepam milligram
+#       equivalents; mg/day)
 #   • adverse_effects list replaced with explicit item vectors
 #   • mincor = 0.07 to achieve 20-25 predictors per model
 #   • pilot_imp initialised before tryCatch to prevent scoping error
 #   • VIF note added for stop_wdl_exp_combined / wdl_symptom_count
-#   • bzra_weekly_diazepam_eq method set to "" (derived from daily × 7)
 #==============================================================================
 
 library(mice)
@@ -2285,7 +2278,7 @@ continuous_vars <- c(
   "med_quant", "phq2_score", "osss_3_score",
   "n_physical_conditions", "n_ment_conditions", "n_sleep_conditions",
   "wdl_symptom_count",
-  "bzra_daily_diazepam_eq", "bzra_weekly_diazepam_eq",
+  "bzra_daily_diazepam_eq",
   "c_lengthofuse",
   likert_items,
   if (!is.null(analysis_vars$dbas))  analysis_vars$dbas  else character(),
@@ -2604,13 +2597,6 @@ for (var in problematic_vars)
 if (outcome %in% names(method) && method[outcome] != "") {
   method[outcome] <- ""
   cat(sprintf("⚠️  %s method was overwritten — reset to ''\n\n", outcome))
-}
-
-# ── bzra_weekly_diazepam_eq: exclude from imputation ──────────────────────────────
-if ("bzra_weekly_diazepam_eq" %in% names(method)) {
-  method["bzra_weekly_diazepam_eq"] <- ""
-  cat("  ✓ bzra_weekly_diazepam_eq: method set to ''\n")
-  cat("    (derived from daily × 7 — recalculated in Chunk 8 Part E)\n\n")
 }
 
 cat("METHOD SUMMARY:\n")
@@ -3171,10 +3157,7 @@ imputation_parameters <- list(
     "0=No withdrawal, 1=Insomnia only, 2=Other withdrawal symptoms. ",
     "Stored as unordered factor. wdl_symptom_count retained as continuous."
   ),
-  bzra_dose_note = paste0(
-    "bzra_daily_diazepam_eq: mg/day. ",
-    "bzra_weekly_diazepam_eq: mg/week = daily x 7."
-  )
+  bzra_dose_note = "bzra_daily_diazepam_eq: mg/day."
 )
 
 saveRDS(imputation_parameters, "imputation_parameters_optimized.rds")
@@ -3269,9 +3252,7 @@ cat("═════════════════════════
 #       contrasts; imputed with polr, coefficients labelled 1 and 2 vs reference 0
 #       (3-level: 0=No withdrawal, 1=Insomnia only, 2=Other withdrawal symptoms)
 #   Polyreg (1):  prov_terr
-#   Not imputed:  bzra_weekly_diazepam_eq (derived: daily × 7,
-#                 recalculated in Part E),
-#                 n_health_conditions (derived: sum of components,
+#   Not imputed:  n_health_conditions (derived: sum of components,
 #                 recalculated in Part E),
 #                 complete variables, outcome (freq_dich)
 #
@@ -3282,7 +3263,6 @@ cat("═════════════════════════
 # DOWNSTREAM USAGE NOTE:
 #   Two output objects are saved:
 #     • mice_imputation_object.rds  — the raw mids object from mice().
-#         bzra_weekly_diazepam_eq NAs are NOT filled here (derived variable).
 #         n_health_conditions is NOT present (removed in Chunk 7 Part B4).
 #         freq_dich is NOT present (excluded from imputation).
 #         Use only for mice::pool() on directly imputed variables.
@@ -3373,8 +3353,6 @@ cat("    (1/2/3/4/5) rather than polynomial contrasts (.L/.Q/.C)\n")
 cat("    in downstream regression models.\n")
 cat("  alc_use (0=Never … 4=Very high, ordered) → polr\n")
 cat("  prov_terr (unordered nominal) → polyreg\n")
-cat("  bzra_weekly_diazepam_eq excluded (method = ''); recalculated\n")
-cat("    post-imputation in Part E as: weekly = daily × 7\n")
 cat("  n_health_conditions excluded; recalculated in Part E as:\n")
 cat("    n_physical_conditions + n_ment_conditions + n_sleep_conditions\n\n")
 
@@ -3388,7 +3366,6 @@ if (!is.null(imp_params$redundant_predictors_zeroed) &&
 } else {
   cat("  • No perfectly correlated predictors zeroed\n")
 }
-cat("  • bzra_weekly_diazepam_eq excluded from imputation (derived)\n")
 cat("  • ridge = 1e-3 applied to all mice() calls\n\n")
 
 # Run MICE
@@ -3423,11 +3400,7 @@ n_logged <- if (!is.null(imp_final$loggedEvents))
 if (n_logged > 0) {
   cat("⚠️  LOGGED EVENTS DURING FINAL IMPUTATION:\n")
   cat("─────────────────────────────────────────────────────────────\n")
-  cat("  Total events:", n_logged, "\n")
-  cat("  NOTE: Any dropped_predictor events for bzra_weekly_diazepam_eq\n")
-  cat("  are expected — this variable is excluded from imputation\n")
-  cat("  (method = '') and its column presence in the predictor matrix\n")
-  cat("  may trigger a benign warning. All other events warrant review.\n\n")
+  cat("  Total events:", n_logged, "\n\n")
   event_summary <- table(imp_final$loggedEvents$out)
   cat("  Event types:\n")
   for (event in names(event_summary))
@@ -3614,12 +3587,9 @@ all_imp_list <- lapply(seq_len(imp_params$optimal_m),
 cat("D1. Completeness check\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  PURPOSE: Confirm every imputed variable has zero missing values\n")
-cat("           in every completed dataset.\n")
-cat("  NOTE: bzra_weekly_diazepam_eq is intentionally excluded here —\n")
-cat("        recalculated as daily × 7 in Part E.\n\n")
+cat("           in every completed dataset.\n\n")
 
 imp_vars <- names(imp_params$method[imp_params$method != ""])
-imp_vars <- imp_vars[imp_vars != "bzra_weekly_diazepam_eq"]
 
 completeness_fails <- character()
 for (i in seq_along(all_imp_list)) {
@@ -3652,7 +3622,6 @@ cat("  items assigned method = 'pmm'.\n\n")
 pmm_vars <- names(imp_params$method[imp_params$method == "pmm"])
 pmm_vars <- pmm_vars[pmm_vars %in% names(df_imp)]
 pmm_vars <- pmm_vars[sapply(df_imp[pmm_vars], is.numeric)]
-pmm_vars <- pmm_vars[pmm_vars != "bzra_weekly_diazepam_eq"]
 
 range_fails   <- character()
 range_summary <- data.frame()
@@ -3717,7 +3686,6 @@ cat("        expected if missingness is related to trait levels.\n\n")
 vars_for_qc <- names(imp_params$method[imp_params$method == "pmm"])
 vars_for_qc <- vars_for_qc[vars_for_qc %in% names(df_imp)]
 vars_for_qc <- vars_for_qc[sapply(df_imp[vars_for_qc], is.numeric)]
-vars_for_qc <- vars_for_qc[vars_for_qc != "bzra_weekly_diazepam_eq"]
 vars_for_qc <- vars_for_qc[
   colSums(is.na(df_imp[, vars_for_qc, drop = FALSE])) > 0]
 
@@ -4079,40 +4047,12 @@ if (n_correct == nrow(d1)) {
   cat("  ⚠️  Mismatch in", nrow(d1) - n_correct, "rows — investigate\n\n")
 }
 
-# ── E2. bzra_weekly_diazepam_eq ───────────────────────────────────────────────
-cat("E2. bzra_weekly_diazepam_eq\n")
-cat("─────────────────────────────────────────────────────────────\n")
-cat("  Formula: bzra_daily_diazepam_eq × 7\n")
-cat("  Excluded from mice() (method = '') to preserve the mathematical\n")
-cat("  relationship with the daily equivalent. NAs from confirmed users\n")
-cat("  with missing dose/frequency data are filled here using imputed\n")
-cat("  daily values.\n\n")
-cat("  IMPORTANT: This recalculation applies to all_imp_list only.\n")
-cat("  mice_imputation_object.rds retains the original NAs for\n")
-cat("  bzra_weekly_diazepam_eq. Always use imputed_datasets_final.rds\n")
-cat("  for any analysis involving this variable.\n\n")
-
-for (i in seq_along(all_imp_list)) {
-  d <- all_imp_list[[i]]
-  if ("bzra_daily_diazepam_eq" %in% names(d)) {
-    all_imp_list[[i]]$bzra_weekly_diazepam_eq <- d$bzra_daily_diazepam_eq * 7
-  }
-}
-
-n_na_weekly <- sum(is.na(all_imp_list[[1]]$bzra_weekly_diazepam_eq))
-n_na_daily  <- sum(is.na(all_imp_list[[1]]$bzra_daily_diazepam_eq))
-
-if (n_na_weekly == 0) {
-  cat("  ✓ bzra_weekly_diazepam_eq: no NAs remaining\n")
-} else {
-  cat(sprintf("  ⚠️  %d NAs remaining in bzra_weekly_diazepam_eq\n", n_na_weekly))
-}
+n_na_daily <- sum(is.na(all_imp_list[[1]]$bzra_daily_diazepam_eq))
 if (n_na_daily == 0) {
-  cat("  ✓ bzra_daily_diazepam_eq: no NAs remaining (correctly imputed)\n")
+  cat("  ✓ bzra_daily_diazepam_eq: no NAs remaining (correctly imputed)\n\n")
 } else {
-  cat(sprintf("  ⚠️  %d NAs remaining in bzra_daily_diazepam_eq\n", n_na_daily))
+  cat(sprintf("  ⚠️  %d NAs remaining in bzra_daily_diazepam_eq\n\n", n_na_daily))
 }
-cat("\n")
 
 # -----------------------------------------------------------------------------
 # PART F: ADD OUTCOME VARIABLE BACK
@@ -4161,7 +4101,6 @@ cat("═════════════════════════
 cat("TWO OBJECTS SAVED — USE GUIDANCE:\n")
 cat("─────────────────────────────────────────────────────────────\n")
 cat("  mice_imputation_object.rds  — raw mids object from mice()\n")
-cat("    • bzra_weekly_diazepam_eq: original NAs retained\n")
 cat("    • n_health_conditions: not present (removed in Chunk 7 Part B4)\n")
 cat("    • freq_dich: not present (excluded from imputation)\n")
 cat("    • Only use for mice::pool() on directly imputed variables\n\n")
@@ -4184,7 +4123,6 @@ cat("─────────────────────────
 cat(sprintf("  Total variables: %d\n",   ncol(all_imp_list[[1]])))
 cat(sprintf("  Observations:    %d\n",   nrow(all_imp_list[[1]])))
 cat(sprintf("  Includes: freq_dich, all imputed vars,\n"))
-cat(sprintf("            bzra_weekly_diazepam_eq (recalculated),\n"))
 cat(sprintf("            n_health_conditions (recalculated)\n\n"))
 
 # -----------------------------------------------------------------------------
@@ -4272,7 +4210,7 @@ cat("  PRIMARY:   imputed_datasets_final.rds\n")
 cat("             → m=24 complete datasets; all derived vars correct\n")
 cat("             → freq_dich included; use for all Chunk 9 analyses\n")
 cat("  SECONDARY: mice_imputation_object.rds\n")
-cat("             → Raw mids object; bzra_weekly NAs unfilled\n")
+cat("             → Raw mids object; n_health_conditions/freq_dich absent\n")
 cat("             → Only use for directly imputed variables\n\n")
 
 cat("FILES CREATED:\n")
@@ -4313,8 +4251,6 @@ cat("\n")
 #   from Chunk 8).
 #   n_health_conditions was recalculated in Chunk 8 Part E as:
 #     n_physical_conditions + n_ment_conditions + n_sleep_conditions
-#   bzra_weekly_diazepam_eq was recalculated in Chunk 8 Part E as:
-#     bzra_daily_diazepam_eq × 7
 #   freq_dich (outcome) was added back in Chunk 8 Part F.
 #   None of the above requires re-derivation here.
 #
@@ -4365,8 +4301,7 @@ cat("\n")
 #              "Other withdrawal symptoms"
 #            Dummy-coded in regression. NOT imputed with Polr because
 #            categories are not ordered by severity.)
-#   Not imputed: bzra_weekly_diazepam_eq (recalculated in Chunk 8 Part E),
-#                n_health_conditions (recalculated in Chunk 8 Part E),
+#   Not imputed: n_health_conditions (recalculated in Chunk 8 Part E),
 #                freq_dich (outcome — added in Chunk 8 Part F)
 #==============================================================================
 
@@ -5155,30 +5090,16 @@ if ("n_health_conditions" %in% names(all_imputed[[1]])) {
   validation_passed <- FALSE
 }
 
-# bzra_weekly_diazepam_eq — recalculated in Chunk 8 Part E as daily × 7
-if ("bzra_weekly_diazepam_eq" %in% names(all_imputed[[1]])) {
-  n_na_w <- sum(is.na(all_imputed[[1]]$bzra_weekly_diazepam_eq))
-  cat(sprintf("  ✓ bzra_weekly_diazepam_eq present | NAs: %d\n", n_na_w))
-  if (n_na_w > 0) {
-    cat("    ⚠️  Unexpected NAs — check Chunk 8 Part E bzra recalculation\n")
+# bzra_daily_diazepam_eq — imputed directly via PMM in Chunk 8
+if ("bzra_daily_diazepam_eq" %in% names(all_imputed[[1]])) {
+  n_na_d <- sum(is.na(all_imputed[[1]]$bzra_daily_diazepam_eq))
+  cat(sprintf("  ✓ bzra_daily_diazepam_eq present | NAs: %d\n", n_na_d))
+  if (n_na_d > 0) {
+    cat("    ⚠️  Unexpected NAs — check Chunk 8 imputation\n")
     validation_passed <- FALSE
-  } else {
-    # Spot-check: weekly should equal daily × 7
-    daily_w  <- all_imputed[[1]]$bzra_daily_diazepam_eq
-    weekly_w <- all_imputed[[1]]$bzra_weekly_diazepam_eq
-    if (!is.null(daily_w)) {
-      n_mismatch <- sum(abs(weekly_w - daily_w * 7) > 1e-8, na.rm = TRUE)
-      if (n_mismatch == 0) {
-        cat("    ✓ weekly = daily × 7 verified for all rows\n")
-      } else {
-        cat(sprintf("    ⚠️  %d rows where weekly ≠ daily × 7 — investigate\n",
-                    n_mismatch))
-        validation_passed <- FALSE
-      }
-    }
   }
 } else {
-  cat("  ✗ bzra_weekly_diazepam_eq MISSING — check Chunk 8 Part E\n")
+  cat("  ✗ bzra_daily_diazepam_eq MISSING — check Chunk 8\n")
   validation_passed <- FALSE
 }
 
